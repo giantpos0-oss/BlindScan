@@ -83,10 +83,14 @@ class Guidance {
 
         val page = pageEdges(gray, sw, sh)
 
-        // Text extents in 0..1 frame units.
+        // Text extents in 0..1 frame units. Only real lines of text count: short scraps (keyboard
+        // keys, picture labels, page numbers) at the edges shouldn't make you move the phone.
         val fw = frame.width.toFloat(); val fh = frame.height.toFloat()
         var minX = 1f; var minY = 1f; var maxX = 0f; var maxY = 0f
+        val longSides = boxes.map { max(it.w, it.h) }.sorted()
+        val minLong = if (longSides.isEmpty()) 0f else 0.5f * longSides[(longSides.size * 3 / 4).coerceAtMost(longSides.size - 1)]
         for (b in boxes) {
+            if (max(b.w, b.h) < minLong) continue
             val c = cos(b.angle); val s = sin(b.angle)
             val ex = abs(c) * b.w / 2 + abs(s) * b.h / 2
             val ey = abs(s) * b.w / 2 + abs(c) * b.h / 2

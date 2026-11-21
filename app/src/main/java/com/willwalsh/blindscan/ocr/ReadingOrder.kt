@@ -12,8 +12,9 @@ import kotlin.math.sin
  * can be read top to bottom and spoken while the rest of the page is still being read.
  *
  * 1. The page is straightened: its tilt is measured from the text lines themselves.
- * 2. Pieces of text are joined into a line only when they are close together, so a picture label
- *    beside a column is never stitched into a sentence.
+ * 2. Pieces of text are joined into a line only when they belong together: two long pieces with
+ *    a gap between them are separate columns, so columns and picture labels are never stitched
+ *    into one sentence. A decorative drop capital is joined to its first word.
  * 3. Lines are grouped into blocks (columns, captions, labels): stacked closely and overlapping
  *    side to side.
  * 4. Blocks are read top to bottom and columns left to right. Small scraps (picture labels,
@@ -25,6 +26,8 @@ object ReadingOrder {
     class Row(
         val v: Float, val h: Float, val left: Float, val right: Float, val boxes: List<Int>,
         val block: Int, val blockWidth: Float,
+        /** Box index of a decorative drop capital starting this line (joined to the next word), or -1. */
+        val dropCap: Int = -1,
     ) {
         val width: Float get() = right - left
     }
@@ -41,6 +44,7 @@ object ReadingOrder {
 
     private class Line(var v: Float, var h: Float, var left: Float, var right: Float) {
         val items = ArrayList<Int>()
+        var dropCap = -1
     }
 
     private class Block {
@@ -63,17 +67,68 @@ object ReadingOrder {
         }
         val typicalH = hs.sorted()[n / 2]
 
-        // 2. Lines: same height on the page AND close side to side.
-        val lines = ArrayList<Line>()
-        for (i in (0 until n).sortedBy { vs[it] }) {
-            val l0 = us[i] - ls[i] / 2; val l1 = us[i] + ls[i] / 2
-            val line = lines.firstOrNull { ln ->
-                abs(ln.v - vs[i]) < 0.5f * min(ln.h, hs[i]) &&
-                    max(0f, max(ln.left, l0) - min(ln.right, l1)) < 1.5f * max(ln.h, hs[i])
+        // Each box's extent across (u) and down (v) the straightened page.
+        val extU = FloatArray(n); val extV = FloatArray(n)
+        for ((i, b) in boxes.withIndex()) {
+            val d = b.angle - tilt
+            extU[i] = b.w * abs(cos(d)) + b.h * abs(sin(d))
+            extV[i] = b.w * abs(sin(d)) + b.h * abs(cos(d))
+        }
+        // Drop capitals: one big letter, more than ~1.8 lines tall and not much wider than tall.
+        // Set aside, then attached to the first line beside it.
+        val isDropCap = BooleanArray(n) {
+            extV[it] > 1.8f * typicalH && extU[it] < 1.5f * extV[it] && extU[it] < 3f * typicalH
+        }
+
+        // 2. Lines: same height on the page AND close side to side. Two long pieces with a real gap
+        //    between them are different columns (an article's columns can be less than a line height
+        //    apart); a short piece beside a long one (a price, a page number) belongs to the line,
+        //    unless a column gutter runs between them.
+        fun buildLines(gutters: List<Float>, found: MutableList<Float>?): ArrayList<Line> {
+            val lines = ArrayList<Line>()
+            for (i in (0 until n).sortedBy { vs[it] }) {
+                if (isDropCap[i]) continue
+                val l0 = us[i] - ls[i] / 2; val l1 = us[i] + ls[i] / 2
+                val line = lines.firstOrNull { ln ->
+                    val h = max(ln.h, hs[i])
+                    if (abs(ln.v - vs[i]) >= 0.5f * min(ln.h, hs[i])) return@firstOrNull false
+                    val gapL = min(ln.right, l1); val gapR = max(ln.left, l0) // the gap, if any, is gapL..gapR
+                    val gap = max(0f, gapR - gapL)
+                    val bothLong = (ln.right - ln.left) > 4f * h && ls[i] > 4f * h
+                    if (bothLong && gap > 0.5f * h) { found?.add((gapL + gapR) / 2); return@firstOrNull false }
+                    if (gap >= 3f * h) return@firstOrNull false
+                    gutters.none { g -> g > gapL - 0.3f * h && g < gapR + 0.3f * h && gap > 0.3f * h }
+                }
+                if (line != null) {
+                    line.items.add(i); line.left = min(line.left, l0); line.right = max(line.right, l1)
+                } else lines.add(Line(vs[i], hs[i], l0, l1).also { it.items.add(i) })
             }
-            if (line != null) {
-                line.items.add(i); line.left = min(line.left, l0); line.right = max(line.right, l1)
-            } else lines.add(Line(vs[i], hs[i], l0, l1).also { it.items.add(i) })
+            return lines
+        }
+        // First pass finds where columns split; a position seen on 3+ lines is a real gutter.
+        val splits = ArrayList<Float>()
+        buildLines(emptyList(), splits)
+        splits.sort()
+        val gutters = ArrayList<Float>()
+        var k = 0
+        while (k < splits.size) {
+            var e = k
+            while (e + 1 < splits.size && splits[e + 1] - splits[k] < 1.5f * typicalH) e++
+            if (e - k + 1 >= 3) gutters.add(splits.subList(k, e + 1).average().toFloat())
+            k = e + 1
+        }
+        val lines = buildLines(gutters, null)
+        for (i in 0 until n) {
+            if (!isDropCap[i]) continue
+            val capLeft = us[i] - extU[i] / 2; val capRight = us[i] + extU[i] / 2
+            val capTop = vs[i] - extV[i] / 2; val capBottom = vs[i] + extV[i] / 2
+            val target = lines.filter { ln ->
+                ln.v > capTop - 0.5f * typicalH && ln.v < capBottom &&
+                    ln.left - capRight > -1.2f * typicalH && ln.left - capRight < 1.5f * typicalH
+            }.minByOrNull { it.v }
+            if (target != null) {
+                target.items.add(i); target.dropCap = i; target.left = min(target.left, capLeft)
+            } else lines.add(Line(vs[i], extV[i], capLeft, capRight).also { it.items.add(i) })
         }
         lines.sortBy { it.v }
 
@@ -88,6 +143,7 @@ object ReadingOrder {
                 val li = lines[i]
                 val dv = lj.v - li.v
                 if (dv <= 0.3f * lj.h || dv > 2.6f * max(li.h, lj.h)) continue
+                if (max(li.h, lj.h) > 1.6f * min(li.h, lj.h)) continue // different text sizes: not one block
                 val overlap = min(li.right, lj.right) - max(li.left, lj.left)
                 if (overlap < 0.4f * min(li.right - li.left, lj.right - lj.left)) continue
                 if (dv < bestDv) { bestDv = dv; best = i }
@@ -126,7 +182,12 @@ object ReadingOrder {
             }
             return out
         }
-        val isSmall = { b: Block -> b.lines.size <= 2 && b.chars < 40 }
+        // Scraps: a line or two of short text in ordinary-size type. Big, wide type is a headline
+        // and stays with the main text; a big short word (on a sign or drum in a photo) is a scrap.
+        val isSmall = { b: Block ->
+            val headline = b.lines.maxOf { it.h } > 1.3f * typicalH && (b.right - b.left) > 8f * typicalH
+            b.lines.size <= 2 && b.chars < 40 && !headline
+        }
         val ordered = order(blocks.filterNot(isSmall)) + order(blocks.filter(isSmall))
 
         val rows = ArrayList<Row>()
@@ -134,13 +195,15 @@ object ReadingOrder {
             val widths = blk.lines.map { it.right - it.left }.sorted()
             val bw = widths[(widths.size * 8 / 10).coerceAtMost(widths.size - 1)]
             for (ln in blk.lines.sortedBy { it.v }) {
-                rows.add(Row(ln.v, ln.h, ln.left, ln.right, ln.items.sortedBy { us[it] }, bi, bw))
+                val lineItems = ln.items.sortedBy { if (it == ln.dropCap) -Float.MAX_VALUE else us[it] }
+                rows.add(Row(ln.v, ln.h, ln.left, ln.right, lineItems, bi, bw, ln.dropCap))
             }
         }
         return Layout(rows, typicalH, tilt)
     }
 
-    private fun endsSentence(t: String) = t.trimEnd().lastOrNull()?.let { it in ".!?:;" } ?: false
+    private fun endsSentence(t: String) =
+        t.trimEnd().trimEnd('"', '”', '’', '\'', ')', ']').lastOrNull()?.let { it in ".!?:;" } ?: false
     private fun startsNew(t: String) = t.firstOrNull()?.let { it.isUpperCase() || it.isDigit() || it in "•·*-–—(\"“" } ?: false
 
     /**

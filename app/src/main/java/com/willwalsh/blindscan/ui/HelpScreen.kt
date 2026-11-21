@@ -45,9 +45,15 @@ private val HELP = listOf(
             "moved while the picture was being taken, it quietly takes a second one and keeps the sharper.",
         "If pressing the button tips the phone or knocks the page out of view, BlindScan tells you how to " +
             "fix it and takes the picture once you've settled again.",
-        "Glossy paper can reflect the light and wash out words. If words go missing on a shiny page, turn " +
-            "the light off or tilt the page slightly away from the overhead light.",
+        "Glossy paper can reflect the phone's light and wash out words. Whenever the light is on during a " +
+            "scan, BlindScan also takes a picture with the light off, reads both, and keeps the better one. " +
+            "If words still go missing on a shiny page, tilt the page slightly away from overhead lights.",
         "Positioning prompts come one movement at a time. After each one there's time to move before the next.",
+    ),
+    "Columns, headlines and pictures" to listOf(
+        "Pages with two or more columns are read one column at a time, top to bottom, left to right. " +
+            "Headlines come first. Labels on pictures, captions and page numbers are read after the main text, " +
+            "so they don't interrupt it. A big decorative first letter is joined back onto its word.",
     ),
     "Fast results" to listOf(
         "As soon as you scan, the document opens and the first lines are read out while the rest of the page " +

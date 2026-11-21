@@ -8,7 +8,10 @@ fun main(args: Array<String>) {
         val idx = boxes.indices.shuffled()
         val sb = idx.map { boxes[it] }; val st = idx.map { rows[it][0] }
         val layout = ReadingOrder.layout(sb)
-        val rowTexts = layout.rows.map { r -> r.boxes.joinToString(" ") { st[it] } }
+        val rowTexts = layout.rows.map { r ->
+            val sb = StringBuilder(); var glue = false
+            for (i in r.boxes) { if (sb.isNotEmpty() && !glue) sb.append(' '); sb.append(st[i]); glue = i == r.dropCap && st[i].length == 1 }
+            sb.toString() }
         println("=== $f (tilt ${"%.1f".format(Math.toDegrees(layout.tilt.toDouble()))} degrees)")
         ReadingOrder.paragraphs(layout, rowTexts) { it.lowercase() in words }.forEachIndexed { i, p -> println("[${i + 1}] $p") }
     }

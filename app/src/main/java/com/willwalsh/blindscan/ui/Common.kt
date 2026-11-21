@@ -75,6 +75,9 @@ data class ScannedPage(
     val detectMs: Long = 0,
     val recognizeMs: Long = 0,
     val lineConfidences: List<Float> = emptyList(),
+    /** A note for the test report about the light, e.g. which of two photos was used. */
+    val lightNote: String = "",
+    val altPhoto: File? = null,
 ) {
     val text: String get() = paragraphs.joinToString("\n\n")
 }
@@ -148,8 +151,10 @@ object ScanPhotos {
     /** Deletes photos no document refers to any more. */
     fun tidy(context: Context) {
         val keep = HashSet<String>()
-        listOfNotNull(DocumentStore.open, DocumentStore.last, DocumentStore.addingTo).forEach { d -> d.pages.forEach { p -> p.photo?.let { keep.add(it.name) } } }
-        DocumentStore.batch.forEach { p -> p.photo?.let { keep.add(it.name) } }
+        listOfNotNull(DocumentStore.open, DocumentStore.last, DocumentStore.addingTo).forEach { d ->
+            d.pages.forEach { p -> p.photo?.let { keep.add(it.name) }; p.altPhoto?.let { keep.add(it.name) } }
+        }
+        DocumentStore.batch.forEach { p -> p.photo?.let { keep.add(it.name) }; p.altPhoto?.let { keep.add(it.name) } }
         dir(context).listFiles()?.forEach { if (it.name !in keep) it.delete() }
     }
 }

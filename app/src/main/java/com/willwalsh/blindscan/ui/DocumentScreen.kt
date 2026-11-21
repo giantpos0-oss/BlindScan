@@ -239,7 +239,7 @@ private fun defaultFileName(id: Long): String =
  * so a scan can be looked at in detail. Returns false if the photos are gone.
  */
 private fun shareScanForTesting(context: Context, app: BlindScanApp, doc: ScannedDocument): Boolean {
-    val photos = doc.pages.mapNotNull { it.photo }.filter { it.exists() }
+    val photos = doc.pages.flatMap { listOfNotNull(it.photo, it.altPhoto) }.filter { it.exists() }
     if (photos.isEmpty()) return false
     val version = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?"
     val report = buildString {
@@ -252,6 +252,7 @@ private fun shareScanForTesting(context: Context, app: BlindScanApp, doc: Scanne
             val conf = p.lineConfidences
             appendLine("=== Page ${i + 1}: photo ${p.photo?.name ?: "missing"}")
             appendLine("Finding text: ${p.detectMs} ms. Reading lines: ${p.recognizeMs} ms. Lines: ${conf.size}.")
+            if (p.lightNote.isNotEmpty()) appendLine(p.lightNote)
             if (conf.isNotEmpty()) {
                 appendLine("Average line confidence: ${"%.3f".format(conf.average())}. Lowest: ${conf.sorted().take(5).joinToString { "%.2f".format(it) }}")
             }

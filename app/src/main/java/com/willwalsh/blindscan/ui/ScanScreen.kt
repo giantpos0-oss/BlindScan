@@ -34,6 +34,7 @@ import com.willwalsh.blindscan.BlindScanApp
 import com.willwalsh.blindscan.LocalSettings
 import com.willwalsh.blindscan.Voice
 import com.willwalsh.blindscan.camera.CameraHolder
+import com.willwalsh.blindscan.ocr.OcrEngine
 import com.willwalsh.blindscan.guidance.Guidance
 import com.willwalsh.blindscan.guidance.TiltSensor
 import com.willwalsh.blindscan.guidance.sharpness
@@ -69,7 +70,7 @@ private suspend fun steadyCapture(
     latest: () -> Guidance.Report?,
     say: (String) -> Unit,
     setCapturing: (Boolean) -> Unit,
-): Bitmap {
+): Pair<Bitmap, Bitmap?> {
     suspend fun waitStill(maxMs: Long) {
         if (!motion.canSenseMotion) return
         val start = System.currentTimeMillis()
@@ -93,12 +94,29 @@ private suspend fun steadyCapture(
     try {
         motion.resetPeak()
         val first = camera.capture()
-        if (!motion.canSenseMotion || motion.peakMotion() < TiltSensor.RETAKE_LIMIT) return first
-        motion.resetPeak()
-        val second = try { camera.capture() } catch (_: Throwable) { return first }
-        val a = withContext(Dispatchers.Default) { sharpness(first) }
-        val b = withContext(Dispatchers.Default) { sharpness(second) }
-        return if (b > a) { first.recycle(); second } else { second.recycle(); first }
+        var best = first
+        if (motion.canSenseMotion && motion.peakMotion() >= TiltSensor.RETAKE_LIMIT) {
+            motion.resetPeak()
+            val second = try { camera.capture() } catch (_: Throwable) { null }
+            if (second != null) {
+                val a = withContext(Dispatchers.Default) { sharpness(first) }
+                val b = withContext(Dispatchers.Default) { sharpness(second) }
+                best = if (b > a) { first.recycle(); second } else { second.recycle(); first }
+            }
+        }
+        // Light on: also take one with the light off, in case the light glared on shiny paper.
+        var lightOff: Bitmap? = null
+        if (camera.torchOn) {
+            camera.setTorch(false)
+            try {
+                delay(600) // let the exposure adjust to the darker scene
+                lightOff = camera.capture()
+            } catch (_: Throwable) {
+            } finally {
+                camera.setTorch(true)
+            }
+        }
+        return Pair(best, lightOff)
     } finally {
         setCapturing(false)
     }
@@ -117,30 +135,61 @@ private fun readInBackground(
     photo: Bitmap,
     onProgress: (List<String>) -> Unit,
     onDone: (ScannedPage) -> Unit,
+    lightOffPhoto: Bitmap? = null,
 ) {
     app.appScope.launch {
         readingLock.withLock {
             app.markScanStarted()
             val file = ScanPhotos.save(context, photo)
-            val result = try {
+            val altFile = lightOffPhoto?.let { ScanPhotos.save(context, it) }
+            fun readOne(b: Bitmap, progress: Boolean) = try {
                 app.documentEngine.read(
-                    photo, limit = 1600, correct = app.settings.wordCorrection,
-                    onProgress = { paras -> app.appScope.launch(Dispatchers.Main) { onProgress(paras) } },
+                    b, limit = 1600, correct = app.settings.wordCorrection,
+                    onProgress = if (!progress) null else { paras -> app.appScope.launch(Dispatchers.Main) { onProgress(paras) } },
                 )
             } catch (t: Throwable) { null }
+            var result: OcrEngine.Result?
+            var note = ""
+            if (lightOffPhoto == null) {
+                result = readOne(photo, progress = true)
+            } else {
+                // The light was on: glossy paper can reflect it and wash words out. Read the photo
+                // taken with the light off too, and keep whichever gave more real words.
+                val withLight = readOne(photo, progress = false)
+                val noLight = readOne(lightOffPhoto, progress = false)
+                val a = realWords(app, withLight); val b = realWords(app, noLight)
+                result = if (b > a) noLight else withLight
+                note = "Light was on: read with light $a words, without light $b words; used the photo " +
+                    (if (b > a) "without the light." else "with the light.")
+                lightOffPhoto.recycle()
+            }
             photo.recycle()
             app.markScanFinished()
             val page = ScannedPage(
                 paragraphs = result?.paragraphs ?: emptyList(),
                 photo = file,
+                altPhoto = altFile,
                 reading = false,
                 detectMs = result?.detectMs ?: 0,
                 recognizeMs = result?.recognizeMs ?: 0,
                 lineConfidences = result?.lines?.map { it.confidence } ?: emptyList(),
+                lightNote = note,
             )
             withContext(Dispatchers.Main) { onDone(page) }
         }
     }
+}
+
+/** How many recognised words are real English words or numbers: a measure of how well a photo read. */
+private fun realWords(app: BlindScanApp, r: OcrEngine.Result?): Int {
+    if (r == null) return 0
+    var n = 0
+    for (p in r.paragraphs) for (token in p.split(' ')) {
+        val core = token.trim { !it.isLetterOrDigit() }
+        if (core.isEmpty()) continue
+        if (core.any { it.isDigit() } || (core.length >= 2 && app.corrector.isKnownWord(core))) n++
+    }
+    return n
 }
 
 @Composable
@@ -176,7 +225,7 @@ private fun ScanCamera() {
     fun say(text: String) = announcer.say(text, view, settings.documentVoice == Voice.SCREEN_READER)
 
     /** One page, read and shown straight away (or added to the document being built). */
-    fun scanSingle(photo: Bitmap) {
+    fun scanSingle(photo: Bitmap, lightOff: Bitmap?) {
         val doc = DocumentStore.startPage(null)
         val docId = doc.id
         readInBackground(app, context, photo,
@@ -197,11 +246,12 @@ private fun ScanCamera() {
                 }
                 ScanPhotos.tidy(context)
             },
+            lightOffPhoto = lightOff,
         )
     }
 
     /** Batch mode: capture, say the page number, read in the background, stay on the camera. */
-    fun scanIntoBatch(photo: Bitmap) {
+    fun scanIntoBatch(photo: Bitmap, lightOff: Bitmap?) {
         val placeholder = ScannedPage(reading = true)
         DocumentStore.batch = DocumentStore.batch + placeholder
         val n = DocumentStore.batch.size
@@ -212,6 +262,7 @@ private fun ScanCamera() {
             onDone = { page ->
                 DocumentStore.batch = DocumentStore.batch.map { if (it.key == placeholder.key) page.copy(key = it.key) else it }
             },
+            lightOffPhoto = lightOff,
         )
     }
 
@@ -225,9 +276,9 @@ private fun ScanCamera() {
                 if (settings.autoLight && !userChoseLight && latest?.dark == true && camera.hasLight && !camera.torchOn) {
                     camera.setTorch(true); lightOn = true
                 }
-                val photo = steadyCapture(camera, tilt, { latest }, ::say, { capturing = it })
+                val (photo, lightOff) = steadyCapture(camera, tilt, { latest }, ::say, { capturing = it })
                 if (settings.vibration) vibrate(context, TICK_BUZZ)
-                if (settings.batchMode && DocumentStore.addingTo == null) scanIntoBatch(photo) else scanSingle(photo)
+                if (settings.batchMode && DocumentStore.addingTo == null) scanIntoBatch(photo, lightOff) else scanSingle(photo, lightOff)
             } catch (t: Throwable) {
                 status = "Couldn't take the picture. Please try again."
                 say(status)

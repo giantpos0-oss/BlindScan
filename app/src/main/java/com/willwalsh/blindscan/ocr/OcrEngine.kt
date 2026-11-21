@@ -292,15 +292,18 @@ class OcrEngine(
         val lines = ArrayList<Line>()
         val rowTexts = ArrayList<String>()
         for (row in layout.rows) {
-            val parts = ArrayList<String>()
+            val sb = StringBuilder()
+            var glue = false // the previous piece was a drop capital: no space before the next word
             for (i in row.boxes) {
                 val r = futures[i]?.get() ?: continue
                 if (r.text.isNotEmpty() && r.confidence >= 0.5f) {
                     lines.add(Line(r.text, boxes[i], r.confidence))
-                    parts.add(r.text)
+                    if (sb.isNotEmpty() && !glue) sb.append(' ')
+                    sb.append(r.text)
+                    glue = i == row.dropCap && r.text.length == 1 && r.text[0].isLetter()
                 }
             }
-            rowTexts.add(parts.joinToString(" "))
+            rowTexts.add(sb.toString())
             onProgress?.invoke(ReadingOrder.paragraphs(layout, rowTexts, ::isKnownWord))
         }
         if (img !== source) img.recycle()
