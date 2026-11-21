@@ -14,6 +14,19 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
+      - name: Set up the signing key
+        env:
+          SIGNING: ${{ secrets.BLINDSCAN_SIGNING }}
+        run: |
+          if [ -n "$SIGNING" ]; then
+            pw="${SIGNING%%:*}"
+            echo "::add-mask::$pw"
+            printf '%s' "${SIGNING#*:}" | base64 -d > "$RUNNER_TEMP/blindscan.p12"
+            echo "BLINDSCAN_KEYSTORE=$RUNNER_TEMP/blindscan.p12" >> "$GITHUB_ENV"
+            echo "BLINDSCAN_KEY_PASSWORD=$pw" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No BLINDSCAN_SIGNING secret: release build uses a temporary debug key"
+          fi
       - name: Build debug and release APKs
         run: |
           chmod +x gradlew
@@ -30,6 +43,12 @@ jobs:
             msg=$(sed -e 's/%/%25/g' "$f" | sed -e ':a;N;$!ba;s/\n/%0A/g')
             echo "::error title=Build error ($f)::$msg"
           done
+      - name: Report which key signed the release
+        run: |
+          apk=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          signer=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
+          cert=$("$signer" verify --print-certs "$apk" | grep -m1 "SHA-256" | sed 's/.*: //')
+          echo "::notice title=Release signing certificate::$cert"
       - uses: actions/upload-artifact@v4
         with:
           name: BlindScan-apks

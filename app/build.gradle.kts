@@ -17,14 +17,27 @@ android {
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
 
+    // Release builds are signed with BlindScan's own key, kept as the GitHub secret BLINDSCAN_SIGNING,
+    // so every new version installs over the old one. Without the secret, the debug key is used.
+    val keystorePath: String? = System.getenv("BLINDSCAN_KEYSTORE")
+    signingConfigs {
+        if (keystorePath != null) {
+            create("blindscan") {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("BLINDSCAN_KEY_PASSWORD")
+                keyAlias = "blindscan"
+                keyPassword = System.getenv("BLINDSCAN_KEY_PASSWORD")
+                storeType = "PKCS12"
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Signed with the debug key so a release build installs straight away.
-            // Swap in your own signing config before publishing to the Play Store.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("blindscan") ?: signingConfigs.getByName("debug")
         }
     }
     compileOptions {
