@@ -39,6 +39,12 @@ private val HELP = listOf(
         "To clear a scan and start fresh, press the Scan document tab again, even while a document is showing. " +
             "Everything you scanned is cleared, ready for a new page.",
     ),
+    "Shaky hands welcome" to listOf(
+        "No stand needed. When you press Scan document now or a volume button, BlindScan waits for a " +
+            "steady moment (at most two and a half seconds) and takes the picture right then. If your hand " +
+            "moved while the picture was being taken, it quietly takes a second one and keeps the sharper.",
+        "Positioning prompts come one movement at a time. After each one there's time to move before the next.",
+    ),
     "Fast results" to listOf(
         "As soon as you scan, the document opens and the first lines are read out while the rest of the page " +
             "is still being read. With Android text to speech the controls work straight away. With a screen " +

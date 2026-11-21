@@ -238,3 +238,25 @@ fun meanBrightness(b: Bitmap): Float {
     }
     return sum / (32 * 24)
 }
+
+/** How sharp a photo is (variance of the Laplacian on a 640-pixel-wide copy of its middle). */
+fun sharpness(b: Bitmap): Double {
+    val cw = b.width * 3 / 4; val ch = b.height * 3 / 4
+    val mid = Bitmap.createBitmap(b, (b.width - cw) / 2, (b.height - ch) / 2, cw, ch)
+    val w = 640; val h = max(1, 640 * ch / cw)
+    val small = Bitmap.createScaledBitmap(mid, w, h, true)
+    if (mid !== b && mid !== small) mid.recycle()
+    val px = IntArray(w * h)
+    small.getPixels(px, 0, w, 0, 0, w, h)
+    small.recycle()
+    val g = FloatArray(px.size) { i -> val p = px[i]; 0.299f * (p shr 16 and 0xFF) + 0.587f * (p shr 8 and 0xFF) + 0.114f * (p and 0xFF) }
+    var sum = 0.0; var sq = 0.0; var n = 0
+    for (y in 1 until h - 1) for (x in 1 until w - 1) {
+        val i = y * w + x
+        val l = (g[i - 1] + g[i + 1] + g[i - w] + g[i + w] - 4 * g[i]).toDouble()
+        sum += l; sq += l * l; n++
+    }
+    if (n == 0) return 0.0
+    val mean = sum / n
+    return sq / n - mean * mean
+}

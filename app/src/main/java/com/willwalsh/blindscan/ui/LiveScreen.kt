@@ -109,7 +109,9 @@ fun LiveScreen() {
                 .heightIn(min = 80.dp, max = 220.dp)
                 .verticalScroll(rememberScrollState())
                 .padding(12.dp)
-                .semantics { liveRegion = LiveRegionMode.Polite },
+                // Screen reader mode: a live region, so new text is read automatically.
+                // Text to speech mode: not a live region, or TalkBack would read it over the voice.
+                .semantics { if (settings.liveVoice == Voice.SCREEN_READER) liveRegion = LiveRegionMode.Polite },
         )
         if (settings.liveVoice == Voice.TEXT_TO_SPEECH) {
             if (readerState.hasText) {

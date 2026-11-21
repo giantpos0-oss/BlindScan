@@ -25,9 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,7 +36,9 @@ import com.willwalsh.blindscan.Voice
 import com.willwalsh.blindscan.camera.CameraHolder
 import com.willwalsh.blindscan.guidance.Guidance
 import com.willwalsh.blindscan.guidance.TiltSensor
+import com.willwalsh.blindscan.guidance.sharpness
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -53,6 +53,27 @@ fun ScanScreen() {
     } else {
         ScanCamera()
     }
+}
+
+/**
+ * Taking a picture by hand, steadily:
+ * 1. wait (up to 2.5 s) until the phone has been still for a quarter of a second,
+ * 2. take the picture while watching the gyroscope,
+ * 3. if the phone moved during the picture, take a second one and keep the sharper of the two.
+ */
+private suspend fun steadyCapture(camera: CameraHolder, motion: TiltSensor): Bitmap {
+    if (motion.canSenseMotion) {
+        val start = System.currentTimeMillis()
+        while (motion.stillForMs() < 250 && System.currentTimeMillis() - start < 2500) delay(30)
+    }
+    motion.resetPeak()
+    val first = camera.capture()
+    if (!motion.canSenseMotion || motion.peakMotion() < TiltSensor.RETAKE_LIMIT) return first
+    motion.resetPeak()
+    val second = try { camera.capture() } catch (_: Throwable) { return first }
+    val a = withContext(Dispatchers.Default) { sharpness(first) }
+    val b = withContext(Dispatchers.Default) { sharpness(second) }
+    return if (b > a) { first.recycle(); second } else { second.recycle(); first }
 }
 
 /** Pages are read one at a time, in the background, so scanning can carry on meanwhile. */
@@ -175,7 +196,7 @@ private fun ScanCamera() {
                 if (settings.autoLight && !userChoseLight && latest?.dark == true && camera.hasLight && !camera.torchOn) {
                     camera.setTorch(true); lightOn = true
                 }
-                val photo = camera.capture()
+                val photo = steadyCapture(camera, tilt)
                 if (settings.vibration) vibrate(context, TICK_BUZZ)
                 if (settings.batchMode && DocumentStore.addingTo == null) scanIntoBatch(photo) else scanSingle(photo)
             } catch (t: Throwable) {
@@ -221,13 +242,13 @@ private fun ScanCamera() {
             scope.launch(Dispatchers.Main) {
                 if (busy) return@launch
                 latest = report
-                status = report.instruction
                 if (settings.autoLight && !userChoseLight && report.dark && camera.hasLight && !camera.torchOn) {
                     camera.setTorch(true); lightOn = true
                     say("It's dim, light on.")
                 }
                 if (settings.guidance) {
                     talk.next(report)?.let { words ->
+                        status = words // the screen shows the last prompt spoken, nothing in between
                         say(words)
                         if (report.ready && settings.vibration) vibrate(context, READY_BUZZ)
                     }
@@ -255,7 +276,9 @@ private fun ScanCamera() {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (busy) CircularProgressIndicator()
-            Text(status, fontSize = 20.sp, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+            // Not a live region: prompts are spoken once, paced, by GuidanceTalker. (A live region made
+            // TalkBack read every change the camera saw, several times a second.)
+            Text(status, fontSize = 20.sp)
         }
         val addingNow = DocumentStore.addingTo
         BigButton(
@@ -310,7 +333,7 @@ private fun ScanCamera() {
 /**
  * Decides when to speak a positioning prompt, so there is time to act on each one:
  *  - an instruction must stay the same for about half a second before it is spoken (no flicker),
- *  - after speaking, nothing new is said until the words have finished plus 1.5 seconds,
+ *  - after speaking, nothing new is said until the words have finished plus 2 seconds,
  *  - the same instruction is repeated only after 5 seconds, and "Ready" is said once.
  */
 private class GuidanceTalker {
@@ -335,7 +358,7 @@ private class GuidanceTalker {
         if (r.ready) saidReady = true
         lastWords = r.instruction; lastSpokenAt = now
         val wordCount = r.instruction.split(' ').size
-        quietUntil = now + wordCount * 300L + 1500L
+        quietUntil = now + wordCount * 300L + 2000L
         return r.instruction
     }
 }

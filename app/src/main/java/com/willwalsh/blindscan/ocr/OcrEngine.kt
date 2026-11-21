@@ -287,12 +287,14 @@ class OcrEngine(
                 }
             }
             rowTexts.add(parts.joinToString(" "))
-            onProgress?.invoke(ReadingOrder.paragraphs(layout, rowTexts))
+            onProgress?.invoke(ReadingOrder.paragraphs(layout, rowTexts, ::isKnownWord))
         }
         if (img !== source) img.recycle()
         val total = System.currentTimeMillis() - start
-        return Result(lines, ReadingOrder.paragraphs(layout, rowTexts), detectMs, total - detectMs)
+        return Result(lines, ReadingOrder.paragraphs(layout, rowTexts, ::isKnownWord), detectMs, total - detectMs)
     }
+
+    private fun isKnownWord(w: String): Boolean = corrector?.isKnownWord(w) ?: false
 
     private fun isVertical(b: TextBox): Boolean {
         val dir = if (b.w >= b.h) b.angle else b.angle + (PI / 2).toFloat()

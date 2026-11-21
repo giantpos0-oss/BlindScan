@@ -55,6 +55,9 @@ class WordCorrector(input: InputStream) {
 
     private fun isWord(w: String): Boolean = (counts[w.lowercase()] ?: 0L) >= MIN_FREQ
 
+    /** True for a reasonably common English word (used to mend words hyphenated across lines). */
+    fun isKnownWord(w: String): Boolean = isWord(w)
+
     private fun lm(w: String): Double {
         val c = counts[w.lowercase()]
         return if (c != null && c >= MIN_FREQ) ln(c / total) else ln(1.0 / total) - 5.0
