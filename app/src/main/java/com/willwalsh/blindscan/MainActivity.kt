@@ -1,0 +1,115 @@
+package com.willwalsh.blindscan
+
+import android.os.Bundle
+import android.view.KeyEvent
+import android.view.WindowManager
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Help
+import androidx.compose.material.icons.filled.DocumentScanner
+import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.sp
+import com.willwalsh.blindscan.speech.Announcer
+import com.willwalsh.blindscan.speech.Reader
+import com.willwalsh.blindscan.ui.CameraPermissionGate
+import com.willwalsh.blindscan.ui.HelpScreen
+import com.willwalsh.blindscan.ui.LiveScreen
+import com.willwalsh.blindscan.ui.LocalAnnouncer
+import com.willwalsh.blindscan.ui.LocalReader
+import com.willwalsh.blindscan.ui.BlindScanTheme
+import com.willwalsh.blindscan.ui.ScanScreen
+import com.willwalsh.blindscan.ui.SettingsScreen
+import com.willwalsh.blindscan.ui.VolumeKeys
+
+enum class Tab(val label: String, val icon: ImageVector) {
+    LIVE("Live mode", Icons.Filled.RecordVoiceOver),
+    SCAN("Scan document", Icons.Filled.DocumentScanner),
+    HELP("Help", Icons.AutoMirrored.Filled.Help),
+    SETTINGS("Settings", Icons.Filled.Settings),
+}
+
+class MainActivity : ComponentActivity() {
+
+    private lateinit var reader: Reader
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        val app = application as BlindScanApp
+        reader = Reader(this).also { it.rate = app.settings.speechRate }
+        val announcer = Announcer(this, reader)
+        setContent {
+            BlindScanTheme {
+                CompositionLocalProvider(
+                    LocalSettings provides app.settings,
+                    LocalReader provides reader,
+                    LocalAnnouncer provides announcer,
+                ) { AppRoot() }
+            }
+        }
+    }
+
+    /**
+     * Volume buttons take the picture while the scan camera is showing. Handling them here,
+     * before the views see them, means they work the same with or without TalkBack.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val isVolume = event.keyCode == KeyEvent.KEYCODE_VOLUME_UP || event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
+        val handler = VolumeKeys.handler
+        if (isVolume && handler != null && (application as BlindScanApp).settings.volumeCapture) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) handler()
+            return true // swallow both press and release so the volume doesn't change
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    override fun onDestroy() {
+        reader.shutdown()
+        super.onDestroy()
+    }
+}
+
+@Composable
+private fun AppRoot() {
+    var tab by rememberSaveable { androidx.compose.runtime.mutableStateOf(Tab.LIVE) }
+    Scaffold(
+        bottomBar = {
+            NavigationBar {
+                for (t in Tab.entries) {
+                    NavigationBarItem(
+                        selected = tab == t,
+                        onClick = { tab = t },
+                        icon = { Icon(t.icon, contentDescription = null) },
+                        label = { Text(t.label, fontSize = 14.sp) },
+                    )
+                }
+            }
+        },
+    ) { padding ->
+        Box(Modifier.fillMaxSize().padding(padding)) {
+            when (tab) {
+                Tab.LIVE -> CameraPermissionGate { LiveScreen() }
+                Tab.SCAN -> CameraPermissionGate { ScanScreen() }
+                Tab.HELP -> HelpScreen()
+                Tab.SETTINGS -> SettingsScreen()
+            }
+        }
+    }
+}

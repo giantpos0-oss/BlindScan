@@ -1,0 +1,8 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- A page with lines of text and a sound wave: print turned into speech. -->
+    <path android:fillColor="#FFFFFF" android:pathData="M32,26h34l10,10v46h-44z"/>
+    <path android:fillColor="#1A237E" android:pathData="M38,42h28v4h-28zM38,51h28v4h-28zM38,60h20v4h-20z"/>
+    <path android:fillColor="#FFD54F" android:pathData="M64,62h4v14h-4zM70,58h4v22h-4zM76,64h4v10h-4z"/>
+</vector>
