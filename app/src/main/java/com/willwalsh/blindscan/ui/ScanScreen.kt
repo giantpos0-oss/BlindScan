@@ -58,22 +58,50 @@ fun ScanScreen() {
 /**
  * Taking a picture by hand, steadily:
  * 1. wait (up to 2.5 s) until the phone has been still for a quarter of a second,
- * 2. take the picture while watching the gyroscope,
- * 3. if the phone moved during the picture, take a second one and keep the sharper of the two.
+ * 2. check a fresh camera view: if pressing the button knocked the page out of view or tipped
+ *    the phone, say how to fix it and wait for you to settle again (up to about 4 s in all),
+ * 3. take the picture while watching the gyroscope; if the phone moved during it, take a
+ *    second one and keep the sharper of the two.
  */
-private suspend fun steadyCapture(camera: CameraHolder, motion: TiltSensor): Bitmap {
-    if (motion.canSenseMotion) {
+private suspend fun steadyCapture(
+    camera: CameraHolder,
+    motion: TiltSensor,
+    latest: () -> Guidance.Report?,
+    say: (String) -> Unit,
+    setCapturing: (Boolean) -> Unit,
+): Bitmap {
+    suspend fun waitStill(maxMs: Long) {
+        if (!motion.canSenseMotion) return
         val start = System.currentTimeMillis()
-        while (motion.stillForMs() < 250 && System.currentTimeMillis() - start < 2500) delay(30)
+        while (motion.stillForMs() < 250 && System.currentTimeMillis() - start < maxMs) delay(30)
     }
-    motion.resetPeak()
-    val first = camera.capture()
-    if (!motion.canSenseMotion || motion.peakMotion() < TiltSensor.RETAKE_LIMIT) return first
-    motion.resetPeak()
-    val second = try { camera.capture() } catch (_: Throwable) { return first }
-    val a = withContext(Dispatchers.Default) { sharpness(first) }
-    val b = withContext(Dispatchers.Default) { sharpness(second) }
-    return if (b > a) { first.recycle(); second } else { second.recycle(); first }
+    waitStill(2500)
+    val checkStart = System.currentTimeMillis()
+    var lastSaid = ""
+    while (System.currentTimeMillis() - checkStart < 4000) {
+        val r = latest()
+        if (r != null && r.time >= checkStart) {
+            val fixable = r.step == Guidance.Step.MOVE || r.step == Guidance.Step.LIFT || r.step == Guidance.Step.TILT
+            if (!fixable) break
+            if (r.instruction != lastSaid) { say(r.instruction); lastSaid = r.instruction; delay(900) }
+        }
+        delay(60)
+    }
+    if (lastSaid.isNotEmpty()) waitStill(1500)
+
+    setCapturing(true)
+    try {
+        motion.resetPeak()
+        val first = camera.capture()
+        if (!motion.canSenseMotion || motion.peakMotion() < TiltSensor.RETAKE_LIMIT) return first
+        motion.resetPeak()
+        val second = try { camera.capture() } catch (_: Throwable) { return first }
+        val a = withContext(Dispatchers.Default) { sharpness(first) }
+        val b = withContext(Dispatchers.Default) { sharpness(second) }
+        return if (b > a) { first.recycle(); second } else { second.recycle(); first }
+    } finally {
+        setCapturing(false)
+    }
 }
 
 /** Pages are read one at a time, in the background, so scanning can carry on meanwhile. */
@@ -132,6 +160,7 @@ private fun ScanCamera() {
     val talk = remember { GuidanceTalker() }
 
     var busy by remember { mutableStateOf(false) }
+    var capturing by remember { mutableStateOf(false) } // the shutter is open: skip camera frames
     var lightOn by remember { mutableStateOf(false) }
     var userChoseLight by remember { mutableStateOf(false) } // once you press Light, auto light leaves it alone
     val adding = DocumentStore.addingTo
@@ -196,7 +225,7 @@ private fun ScanCamera() {
                 if (settings.autoLight && !userChoseLight && latest?.dark == true && camera.hasLight && !camera.torchOn) {
                     camera.setTorch(true); lightOn = true
                 }
-                val photo = steadyCapture(camera, tilt)
+                val photo = steadyCapture(camera, tilt, { latest }, ::say, { capturing = it })
                 if (settings.vibration) vibrate(context, TICK_BUZZ)
                 if (settings.batchMode && DocumentStore.addingTo == null) scanIntoBatch(photo) else scanSingle(photo)
             } catch (t: Throwable) {
@@ -236,12 +265,12 @@ private fun ScanCamera() {
         VolumeKeys.handler = { scope.launch(Dispatchers.Main) { scan() } }
         var readySince = 0L
         camera.start(owner) { frame ->
-            if (busy) return@start
+            if (capturing) return@start
             val boxes = app.fastEngine.detect(frame, 640)
             val report = guidance.analyse(frame, boxes, tilt.tiltDegrees, settings.tiltHints)
             scope.launch(Dispatchers.Main) {
-                if (busy) return@launch
                 latest = report
+                if (busy) return@launch // while scanning, the scan itself decides what to say
                 if (settings.autoLight && !userChoseLight && report.dark && camera.hasLight && !camera.torchOn) {
                     camera.setTorch(true); lightOn = true
                     say("It's dim, light on.")
@@ -333,7 +362,7 @@ private fun ScanCamera() {
 /**
  * Decides when to speak a positioning prompt, so there is time to act on each one:
  *  - an instruction must stay the same for about half a second before it is spoken (no flicker),
- *  - after speaking, nothing new is said until the words have finished plus 2 seconds,
+ *  - after speaking, nothing new is said until the words have finished plus about 1.2 seconds,
  *  - the same instruction is repeated only after 5 seconds, and "Ready" is said once.
  */
 private class GuidanceTalker {
@@ -351,14 +380,14 @@ private class GuidanceTalker {
             candidate = r.instruction; candidateSince = now
             return null
         }
-        if (now - candidateSince < 500) return null      // not steady yet
+        if (now - candidateSince < 400) return null      // not steady yet
         if (now < quietUntil) return null                 // still speaking, or giving you time to move
         if (r.ready && saidReady) return null
         if (!r.ready && r.instruction == lastWords && now - lastSpokenAt < 5000) return null
         if (r.ready) saidReady = true
         lastWords = r.instruction; lastSpokenAt = now
         val wordCount = r.instruction.split(' ').size
-        quietUntil = now + wordCount * 300L + 2000L
+        quietUntil = now + wordCount * 220L + 1200L
         return r.instruction
     }
 }

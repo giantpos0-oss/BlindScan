@@ -87,7 +87,7 @@ def correct_line(chars, P, keys_index, log=None):
         k=1 if len(core)<=4 else 2
         for c in candidates(core.lower()):
             if not is_word(c) or len(c)<MIN_LEN: continue
-            if len(core)<=4 and len(c)!=len(core): continue
+            if (len(core)<=3 and len(c)!=len(core)) or abs(len(c)-len(core))>1: continue
             w=apply_case(core,c); cc=ctc(w)
             if cc<c0-CTC_DROP: continue           # must agree with what the recognizer saw
             s=cc+LAMBDA*lm(w)

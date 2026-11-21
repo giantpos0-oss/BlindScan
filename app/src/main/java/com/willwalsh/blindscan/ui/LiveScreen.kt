@@ -70,7 +70,7 @@ fun LiveScreen() {
                 }
             }
             val engine = if (settings.liveBestAccuracy) app.documentEngine else app.fastEngine
-            val result = engine.read(frame, limit = 960, orient = true, adaptive = false, retryBlurry = false)
+            val result = engine.read(frame, limit = 960, orient = true, adaptive = false, retryBlurry = false, secondCrop = false)
             val newText = tracker.offer(result.text) ?: return@start
             scope.launch(Dispatchers.Main) {
                 if (!tracker.active) return@launch

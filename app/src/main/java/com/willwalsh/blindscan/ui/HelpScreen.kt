@@ -43,6 +43,10 @@ private val HELP = listOf(
         "No stand needed. When you press Scan document now or a volume button, BlindScan waits for a " +
             "steady moment (at most two and a half seconds) and takes the picture right then. If your hand " +
             "moved while the picture was being taken, it quietly takes a second one and keeps the sharper.",
+        "If pressing the button tips the phone or knocks the page out of view, BlindScan tells you how to " +
+            "fix it and takes the picture once you've settled again.",
+        "Glossy paper can reflect the light and wash out words. If words go missing on a shiny page, turn " +
+            "the light off or tilt the page slightly away from the overhead light.",
         "Positioning prompts come one movement at a time. After each one there's time to move before the next.",
     ),
     "Fast results" to listOf(

@@ -118,7 +118,8 @@ class WordCorrector(input: InputStream) {
             var best = core; var bestScore = base
             for (cand in candidates(core.lowercase())) {
                 if (!isWord(cand) || cand.length < MIN_LEN) continue
-                if (core.length <= 4 && cand.length != core.length) continue
+                // Short words keep their length; others may gain or lose one letter ("fild" -> "field").
+                if ((core.length <= 3 && cand.length != core.length) || abs(cand.length - core.length) > 1) continue
                 val w = applyCase(core, cand)
                 val cc = ctc(w)
                 if (cc < c0 - CTC_DROP) continue // must agree with what the recognizer saw

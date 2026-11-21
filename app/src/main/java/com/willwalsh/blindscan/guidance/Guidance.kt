@@ -35,6 +35,7 @@ class Guidance {
         val cutEdges: List<String>,
         val pageEdgesMissing: List<String>?, // null = page edges couldn't be made out
         val pageFillsView: Boolean,
+        val time: Long = System.currentTimeMillis(),
     ) {
         /** The longer spoken answer for the "Check view" button. */
         fun fullReport(lightOn: Boolean): String = buildString {

@@ -11,17 +11,25 @@ import kotlin.math.sin
  * Reading order, worked out from the text boxes alone (before anything is recognised), so lines
  * can be read top to bottom and spoken while the rest of the page is still being read.
  *
- * The page is straightened first: the tilt is measured from the text lines themselves, so a page
- * photographed at an angle still reads line by line in the right order.
+ * 1. The page is straightened: its tilt is measured from the text lines themselves.
+ * 2. Pieces of text are joined into a line only when they are close together, so a picture label
+ *    beside a column is never stitched into a sentence.
+ * 3. Lines are grouped into blocks (columns, captions, labels): stacked closely and overlapping
+ *    side to side.
+ * 4. Blocks are read top to bottom and columns left to right. Small scraps (picture labels,
+ *    page numbers) come after the main text so they don't interrupt it.
  */
 object ReadingOrder {
 
-    /** One printed line: the boxes on it (left to right), its position and extent on the straightened page. */
-    class Row(val v: Float, val h: Float, val left: Float, val right: Float, val boxes: List<Int>) {
+    /** One printed line: its boxes (left to right), position on the straightened page, and its block. */
+    class Row(
+        val v: Float, val h: Float, val left: Float, val right: Float, val boxes: List<Int>,
+        val block: Int, val blockWidth: Float,
+    ) {
         val width: Float get() = right - left
     }
 
-    class Layout(val rows: List<Row>, val typicalHeight: Float, val typicalWidth: Float, val tilt: Float)
+    class Layout(val rows: List<Row>, val typicalHeight: Float, val tilt: Float)
 
     /** Direction of a box's long side, folded into -90..+90 degrees (radians). */
     private fun lineAngle(b: TextBox): Float {
@@ -31,32 +39,105 @@ object ReadingOrder {
         return a
     }
 
+    private class Line(var v: Float, var h: Float, var left: Float, var right: Float) {
+        val items = ArrayList<Int>()
+    }
+
+    private class Block {
+        val lines = ArrayList<Line>()
+        var left = Float.MAX_VALUE; var right = -Float.MAX_VALUE
+        var top = Float.MAX_VALUE; var bottom = -Float.MAX_VALUE
+        var chars = 0
+    }
+
     fun layout(boxes: List<TextBox>): Layout {
-        if (boxes.isEmpty()) return Layout(emptyList(), 0f, 0f, 0f)
-        // Page tilt = median direction of the clearly line-shaped boxes.
+        if (boxes.isEmpty()) return Layout(emptyList(), 0f, 0f)
         val angles = boxes.filter { max(it.w, it.h) > 2 * min(it.w, it.h) }.map { lineAngle(it) }.sorted()
         val tilt = if (angles.isEmpty()) 0f else angles[angles.size / 2]
         val c = cos(tilt); val s = sin(tilt)
-        // Straightened coordinates: u runs along the lines, v down the page.
-        val us = FloatArray(boxes.size); val vs = FloatArray(boxes.size)
-        for ((i, b) in boxes.withIndex()) { us[i] = b.cx * c + b.cy * s; vs[i] = -b.cx * s + b.cy * c }
+        val n = boxes.size
+        val us = FloatArray(n); val vs = FloatArray(n); val hs = FloatArray(n); val ls = FloatArray(n)
+        for ((i, b) in boxes.withIndex()) {
+            us[i] = b.cx * c + b.cy * s; vs[i] = -b.cx * s + b.cy * c
+            hs[i] = min(b.w, b.h); ls[i] = max(b.w, b.h)
+        }
+        val typicalH = hs.sorted()[n / 2]
 
-        class Acc(val v: Float, val h: Float) { val items = ArrayList<Int>() }
-        val accs = ArrayList<Acc>()
-        for (i in boxes.indices.sortedBy { vs[it] }) {
-            val h = min(boxes[i].w, boxes[i].h)
-            val row = accs.firstOrNull { abs(it.v - vs[i]) < 0.5f * min(it.h, h) }
-            if (row != null) row.items.add(i) else accs.add(Acc(vs[i], h).also { it.items.add(i) })
+        // 2. Lines: same height on the page AND close side to side.
+        val lines = ArrayList<Line>()
+        for (i in (0 until n).sortedBy { vs[it] }) {
+            val l0 = us[i] - ls[i] / 2; val l1 = us[i] + ls[i] / 2
+            val line = lines.firstOrNull { ln ->
+                abs(ln.v - vs[i]) < 0.5f * min(ln.h, hs[i]) &&
+                    max(0f, max(ln.left, l0) - min(ln.right, l1)) < 1.5f * max(ln.h, hs[i])
+            }
+            if (line != null) {
+                line.items.add(i); line.left = min(line.left, l0); line.right = max(line.right, l1)
+            } else lines.add(Line(vs[i], hs[i], l0, l1).also { it.items.add(i) })
         }
-        val rows = accs.sortedBy { it.v }.map { a ->
-            val sorted = a.items.sortedBy { us[it] }
-            var l = Float.MAX_VALUE; var r = -Float.MAX_VALUE
-            for (i in sorted) { val half = max(boxes[i].w, boxes[i].h) / 2; l = min(l, us[i] - half); r = max(r, us[i] + half) }
-            Row(a.v, a.h, l, r, sorted)
+        lines.sortBy { it.v }
+
+        // 3. Blocks: link each line to the nearest line above it that overlaps it side to side
+        //    and is no more than ~2.6 line heights higher.
+        val parent = IntArray(lines.size) { it }
+        fun find(x: Int): Int { var r = x; while (parent[r] != r) r = parent[r]; return r }
+        for (j in lines.indices) {
+            val lj = lines[j]
+            var best = -1; var bestDv = Float.MAX_VALUE
+            for (i in 0 until j) {
+                val li = lines[i]
+                val dv = lj.v - li.v
+                if (dv <= 0.3f * lj.h || dv > 2.6f * max(li.h, lj.h)) continue
+                val overlap = min(li.right, lj.right) - max(li.left, lj.left)
+                if (overlap < 0.4f * min(li.right - li.left, lj.right - lj.left)) continue
+                if (dv < bestDv) { bestDv = dv; best = i }
+            }
+            if (best >= 0) { val a = find(best); val b = find(j); if (a != b) parent[max(a, b)] = min(a, b) }
         }
-        val heights = rows.map { it.h }.sorted()
-        val widths = rows.map { it.width }.sorted()
-        return Layout(rows, heights[heights.size / 2], widths[(widths.size * 8 / 10).coerceAtMost(widths.size - 1)], tilt)
+        val blockMap = LinkedHashMap<Int, Block>()
+        for ((i, ln) in lines.withIndex()) {
+            val blk = blockMap.getOrPut(find(i)) { Block() }
+            blk.lines.add(ln)
+            blk.left = min(blk.left, ln.left); blk.right = max(blk.right, ln.right)
+            blk.top = min(blk.top, ln.v - ln.h / 2); blk.bottom = max(blk.bottom, ln.v + ln.h / 2)
+            blk.chars += ln.items.sumOf { (ls[it] / max(1f, hs[it]) * 2).toInt() } // rough letter count
+        }
+        val blocks = blockMap.values.toList()
+
+        // 4. Order: main text first, then small scraps (labels, page numbers). Within each group a
+        //    block comes first if it is above another it overlaps side to side, or to the left of
+        //    one it sits beside.
+        fun before(a: Block, b: Block): Boolean {
+            val hOverlap = min(a.right, b.right) - max(a.left, b.left) > 0
+            val vOverlap = min(a.bottom, b.bottom) - max(a.top, b.top) > 0
+            return when {
+                hOverlap -> a.top < b.top
+                vOverlap -> a.left < b.left
+                else -> a.top < b.top
+            }
+        }
+        fun order(group: List<Block>): List<Block> {
+            val remaining = group.toMutableList(); val out = ArrayList<Block>()
+            while (remaining.isNotEmpty()) {
+                // A block nothing else must come before; on a tie or a cycle, the topmost.
+                val free = remaining.filter { b -> remaining.none { a -> a !== b && before(a, b) } }
+                val next = (if (free.isNotEmpty()) free else remaining).minWith(compareBy({ it.top }, { it.left }))
+                out.add(next); remaining.remove(next)
+            }
+            return out
+        }
+        val isSmall = { b: Block -> b.lines.size <= 2 && b.chars < 40 }
+        val ordered = order(blocks.filterNot(isSmall)) + order(blocks.filter(isSmall))
+
+        val rows = ArrayList<Row>()
+        for ((bi, blk) in ordered.withIndex()) {
+            val widths = blk.lines.map { it.right - it.left }.sorted()
+            val bw = widths[(widths.size * 8 / 10).coerceAtMost(widths.size - 1)]
+            for (ln in blk.lines.sortedBy { it.v }) {
+                rows.add(Row(ln.v, ln.h, ln.left, ln.right, ln.items.sortedBy { us[it] }, bi, bw))
+            }
+        }
+        return Layout(rows, typicalH, tilt)
     }
 
     private fun endsSentence(t: String) = t.trimEnd().lastOrNull()?.let { it in ".!?:;" } ?: false
@@ -66,16 +147,18 @@ object ReadingOrder {
      * Joins recognised rows into paragraphs of naturally flowing text (no line breaks inside),
      * so speech doesn't pause at the end of every printed line and a screen reader moves
      * a whole paragraph at a time. A new paragraph starts:
+     *  - at a new block (column, caption, label),
      *  - after a vertical gap of more than ~1.8 line heights,
      *  - after a short line (well under the column width) when the next line starts like a new item,
      *  - after a heading: a first line with no closing punctuation, narrower than the line below it,
- *  - after a line ending in a number (prices, receipts) when the next line starts a new item.
+     *  - after a line ending in a number (prices, receipts) when the next line starts a new item,
+     *  - around a heading in the middle of a column (short, after a finished sentence).
      * A word broken across lines with a hyphen is mended when the joined word is a real word
      * ("pack- age" -> "package"); a real hyphen is kept ("state- of-the-art" -> "state-of-the-art").
      */
     fun paragraphs(layout: Layout, rowTexts: List<String>, isWord: (String) -> Boolean = { false }): List<String> {
         val paragraphs = ArrayList<String>()
-        val cur = ArrayList<Int>() // row indices in the current paragraph
+        val cur = ArrayList<Int>()
         fun flush() {
             if (cur.isEmpty()) return
             val sb = StringBuilder()
@@ -90,7 +173,9 @@ object ReadingOrder {
                     sb.append(t)
                 } else sb.append(' ').append(t)
             }
-            paragraphs.add(sb.toString())
+            // A lone letter or symbol on its own is almost always a speck or a picture detail.
+            val t = sb.toString()
+            if (!(t.length == 1 && !t[0].isDigit())) paragraphs.add(t)
             cur.clear()
         }
         var last = -1
@@ -100,13 +185,17 @@ object ReadingOrder {
             if (last >= 0) {
                 val prev = layout.rows[last]; val row = layout.rows[i]
                 val prevText = rowTexts[last].trim()
+                val newBlock = prev.block != row.block
                 val gap = row.v - prev.v > layout.typicalHeight * 1.8f
-                val shortLine = prev.width < 0.75f * layout.typicalWidth && startsNew(text) && !prevText.endsWith("-")
+                val shortLine = prev.width < 0.75f * prev.blockWidth && startsNew(text) && !prevText.endsWith("-")
                 val heading = cur.size == 1 && !endsSentence(prevText) && !prevText.endsWith(",") &&
                     !prevText.endsWith("-") && startsNew(text) && prev.width < 0.92f * row.width
-                // Receipts, price lists, labels: a line ending in a number, then a line starting a new item.
                 val itemLine = prevText.lastOrNull()?.isDigit() == true && startsNew(text)
-                if (gap || shortLine || heading || itemLine) flush()
+                // A heading in the middle of a column: after a finished sentence, a short line
+                // that starts like a title and doesn't end like a sentence.
+                val midHeading = endsSentence(prevText) && startsNew(text) && !endsSentence(text) &&
+                    !text.endsWith(",") && row.width < 0.75f * row.blockWidth
+                if (newBlock || gap || shortLine || heading || itemLine || midHeading) flush()
             }
             cur.add(i)
             last = i
