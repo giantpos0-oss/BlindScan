@@ -45,7 +45,7 @@ fun SettingsScreen() {
 
         Section("Accuracy and speed")
         Toggle("Correct unclear words using an English dictionary (numbers are never changed)", s.wordCorrection) { s.wordCorrection = it }
-        Toggle("Fast math engine (XNNPACK). Turn off only if scans fail or get slower", s.fastMath) { s.fastMath = it }
+        Toggle("Experimental fast math engine (XNNPACK). May be faster; turns itself off if a scan fails", s.fastMath) { s.fastMath = it }
         Toggle("Batch scanning: scan several pages, then read them together", s.batchMode) { s.batchMode = it }
 
         Section("Speech")
@@ -61,6 +61,20 @@ fun SettingsScreen() {
                 .padding(horizontal = 16.dp)
                 .semantics { contentDescription = "Speech rate"; stateDescription = rateText },
         )
+
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val crash = (context.applicationContext as com.willwalsh.blindscan.BlindScanApp).crashFile
+        if (crash.exists()) {
+            Section("Problems")
+            BigButton("Share crash report", onClick = {
+                val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(android.content.Intent.EXTRA_SUBJECT, "BlindScan crash report")
+                    putExtra(android.content.Intent.EXTRA_TEXT, runCatching { crash.readText() }.getOrDefault("(could not read the report)"))
+                }
+                context.startActivity(android.content.Intent.createChooser(send, "Share crash report"))
+            })
+        }
 
         Section("Camera and positioning")
         Toggle("Spoken positioning prompts", s.guidance) { s.guidance = it }

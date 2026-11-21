@@ -98,6 +98,16 @@ private fun AppRoot() {
     val settings = LocalSettings.current
     val context = LocalContext.current
     val view = LocalView.current
+    // Anything the app needs to tell you on opening (for example after an unexpected close).
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        val app = context.applicationContext as BlindScanApp
+        val notice = app.startupNotice
+        if (notice != null) {
+            kotlinx.coroutines.delay(1500)
+            announcer.say(notice, view, true)
+            app.startupNotice = null
+        }
+    }
     Scaffold(
         bottomBar = {
             NavigationBar {

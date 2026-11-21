@@ -90,8 +90,18 @@ class OcrEngine(
     // Detection is one big job: give it several threads. Recognition runs many lines side by side,
     // so each line gets one thread.
     private val det: OrtSession = createSession(asset(context, model.det), min(4, cores), fastMath)
-    private val rec: OrtSession = createSession(asset(context, model.rec), 1, fastMath)
     private val cls: OrtSession = createSession(asset(context, "models/cls.onnx"), 1, fastMath)
+
+    // Each thread that reads lines gets its own private recognizer session, so no session is ever
+    // used by two threads at once (safe with every math library, including XNNPACK).
+    private val recBytes = asset(context, model.rec)
+    private val fastMathWanted = fastMath
+    private val recSessions = java.util.Collections.synchronizedList(ArrayList<OrtSession>())
+    private val recLocal = object : ThreadLocal<OrtSession>() {
+        override fun initialValue(): OrtSession =
+            createSession(recBytes, 1, fastMathWanted).also { recSessions.add(it) }
+    }
+    private val rec: OrtSession get() = recLocal.get()!!
 
     // CTC classes: 0 = blank, 1..n = dictionary, n+1 = space.
     private val keys: List<String> =
@@ -101,7 +111,7 @@ class OcrEngine(
     }
 
     private val detInput = det.inputNames.first()
-    private val recInput = rec.inputNames.first()
+    private val recInput: String by lazy { rec.inputNames.first() }
     private val clsInput = cls.inputNames.first()
 
     // ---------------------------------------------------------------- detection
@@ -301,6 +311,7 @@ class OcrEngine(
 
     override fun close() {
         pool.shutdown()
-        det.close(); rec.close(); cls.close()
+        det.close(); cls.close()
+        synchronized(recSessions) { recSessions.forEach { runCatching { it.close() } } }
     }
 }

@@ -71,6 +71,7 @@ private fun readInBackground(
 ) {
     app.appScope.launch {
         readingLock.withLock {
+            app.markScanStarted()
             val file = ScanPhotos.save(context, photo)
             val result = try {
                 app.documentEngine.read(
@@ -79,6 +80,7 @@ private fun readInBackground(
                 )
             } catch (t: Throwable) { null }
             photo.recycle()
+            app.markScanFinished()
             val page = ScannedPage(
                 paragraphs = result?.paragraphs ?: emptyList(),
                 photo = file,
@@ -306,27 +308,34 @@ private fun ScanCamera() {
 }
 
 /**
- * Decides when to speak a guidance prompt so it helps without chattering:
- * new instructions at most every 1.5 s, the same one repeated every 4 s, "ready" said once.
+ * Decides when to speak a positioning prompt, so there is time to act on each one:
+ *  - an instruction must stay the same for about half a second before it is spoken (no flicker),
+ *  - after speaking, nothing new is said until the words have finished plus 1.5 seconds,
+ *  - the same instruction is repeated only after 5 seconds, and "Ready" is said once.
  */
 private class GuidanceTalker {
+    private var candidate = ""
+    private var candidateSince = 0L
     private var lastWords = ""
-    private var lastTime = 0L
+    private var lastSpokenAt = 0L
+    private var quietUntil = 0L
     private var saidReady = false
 
     fun next(r: Guidance.Report): String? {
         val now = System.currentTimeMillis()
-        if (r.ready) {
-            if (saidReady) return null
-            saidReady = true; lastWords = r.instruction; lastTime = now
-            return r.instruction
+        if (!r.ready) saidReady = false
+        if (r.instruction != candidate) {
+            candidate = r.instruction; candidateSince = now
+            return null
         }
-        saidReady = false
-        val changed = r.instruction != lastWords
-        if ((changed && now - lastTime > 1500) || (!changed && now - lastTime > 4000)) {
-            lastWords = r.instruction; lastTime = now
-            return r.instruction
-        }
-        return null
+        if (now - candidateSince < 500) return null      // not steady yet
+        if (now < quietUntil) return null                 // still speaking, or giving you time to move
+        if (r.ready && saidReady) return null
+        if (!r.ready && r.instruction == lastWords && now - lastSpokenAt < 5000) return null
+        if (r.ready) saidReady = true
+        lastWords = r.instruction; lastSpokenAt = now
+        val wordCount = r.instruction.split(' ').size
+        quietUntil = now + wordCount * 300L + 1500L
+        return r.instruction
     }
 }

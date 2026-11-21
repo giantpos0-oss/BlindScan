@@ -1,6 +1,10 @@
 package com.willwalsh.blindscan
 
 import android.app.Application
+import android.os.Build
+import java.io.File
+import java.io.PrintWriter
+import java.io.StringWriter
 import com.willwalsh.blindscan.ocr.OcrEngine
 import com.willwalsh.blindscan.ocr.WordCorrector
 import kotlinx.coroutines.CoroutineScope
@@ -34,9 +38,45 @@ class BlindScanApp : Application() {
             liveEngine ?: OcrEngine(this, OcrEngine.Model.TINY, null, settings.fastMath).also { liveEngine = it }
         }
 
+    /** Something to tell you when the app opens (for example after a crash), or null. */
+    @Volatile var startupNotice: String? = null
+
+    val crashFile: File get() = File(filesDir, "last-crash.txt")
+    private val scanMarker: File get() = File(filesDir, "scan-in-progress")
+
+    /** Called around every scan so a crash during reading can be detected on the next start. */
+    fun markScanStarted() = runCatching { scanMarker.writeText(System.currentTimeMillis().toString()) }
+    fun markScanFinished() = runCatching { scanMarker.delete() }
+
     override fun onCreate() {
         super.onCreate()
         settings = Settings(this)
+
+        // Save details of any crash so it can be shared from Settings.
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+            runCatching {
+                val sw = StringWriter()
+                error.printStackTrace(PrintWriter(sw))
+                crashFile.writeText(
+                    "BlindScan crash at ${java.util.Date()}\n" +
+                        "Phone: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}\n" +
+                        "Thread: ${thread.name}\n\n$sw"
+                )
+            }
+            previous?.uncaughtException(thread, error)
+        }
+
+        // The app closed in the middle of a scan last time: play safe.
+        if (scanMarker.exists()) {
+            scanMarker.delete()
+            val hadFastMath = settings.fastMath
+            if (hadFastMath) settings.fastMath = false
+            startupNotice = "BlindScan closed unexpectedly during the last scan." +
+                (if (hadFastMath) " Fast math has been turned off to prevent it happening again." else "") +
+                (if (crashFile.exists()) " You can share the crash report from Settings." else "")
+        }
+
         settings.onEngineSettingChanged = { rebuildEngines() }
         warmUp()
     }

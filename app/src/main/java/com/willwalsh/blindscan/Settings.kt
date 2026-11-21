@@ -76,10 +76,11 @@ class Settings(context: Context) {
         get() = _wordCorrection.value
         set(v) { _wordCorrection.value = v; save("wordCorrection", v) }
 
-    private val _fastMath = bool("fastMath", true)
+    // Off by default until proven on more phones. ("fastMathV2": the 0.2.0 setting is not carried over.)
+    private val _fastMath = bool("fastMathV2", false)
     var fastMath: Boolean
         get() = _fastMath.value
-        set(v) { _fastMath.value = v; save("fastMath", v); onEngineSettingChanged?.invoke() }
+        set(v) { _fastMath.value = v; save("fastMathV2", v); onEngineSettingChanged?.invoke() }
 
     /** Set by the app so engines can be rebuilt when an engine setting changes. */
     var onEngineSettingChanged: (() -> Unit)? = null

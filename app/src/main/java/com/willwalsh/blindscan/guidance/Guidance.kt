@@ -110,13 +110,14 @@ class Guidance {
             boxes.isEmpty() -> { step = Step.NO_TEXT; words = step.words }
             (cutLeft && cutRight) || (cutTop && cutBottom) -> { step = Step.LIFT; words = step.words }
             cutLeft || cutRight || cutTop || cutBottom -> {
+                // One movement at a time: side to side first, then away/toward.
                 step = Step.MOVE
-                val parts = ArrayList<String>()
-                if (cutLeft) parts.add("to the left")
-                if (cutRight) parts.add("to the right")
-                if (cutTop) parts.add("away from you")
-                if (cutBottom) parts.add("toward you")
-                words = "Move the phone a little ${parts.joinToString(" and ")}."
+                words = when {
+                    cutLeft -> "Move the phone a little to the left."
+                    cutRight -> "Move the phone a little to the right."
+                    cutTop -> "Move the phone a little away from you."
+                    else -> "Move the phone a little toward you."
+                }
             }
             tiltHints && tiltDeg != null && tiltDeg > 25 -> { step = Step.TILT; words = step.words }
             shaky -> { step = Step.HOLD_STILL; words = step.words }
