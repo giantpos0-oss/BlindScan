@@ -25,10 +25,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.sp
 import com.willwalsh.blindscan.speech.Announcer
 import com.willwalsh.blindscan.speech.Reader
 import com.willwalsh.blindscan.ui.CameraPermissionGate
+import com.willwalsh.blindscan.ui.DocumentStore
+import com.willwalsh.blindscan.ui.ScanPhotos
 import com.willwalsh.blindscan.ui.HelpScreen
 import com.willwalsh.blindscan.ui.LiveScreen
 import com.willwalsh.blindscan.ui.LocalAnnouncer
@@ -89,13 +93,32 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun AppRoot() {
     var tab by rememberSaveable { androidx.compose.runtime.mutableStateOf(Tab.LIVE) }
+    val reader = LocalReader.current
+    val announcer = LocalAnnouncer.current
+    val settings = LocalSettings.current
+    val context = LocalContext.current
+    val view = LocalView.current
     Scaffold(
         bottomBar = {
             NavigationBar {
                 for (t in Tab.entries) {
                     NavigationBarItem(
                         selected = tab == t,
-                        onClick = { tab = t },
+                        onClick = {
+                            if (tab == Tab.SCAN && t == Tab.SCAN) {
+                                // Pressing Scan document again starts fresh: the scanned page(s) are cleared.
+                                val hadSomething = DocumentStore.open != null || DocumentStore.batch.isNotEmpty() ||
+                                    DocumentStore.addingTo != null
+                                reader.clear()
+                                DocumentStore.clearAll()
+                                ScanPhotos.tidy(context)
+                                announcer.say(
+                                    if (hadSomething) "Scan cleared. Ready for a new scan." else "Ready to scan.",
+                                    view, settings.documentVoice == Voice.SCREEN_READER,
+                                )
+                            }
+                            tab = t
+                        },
                         icon = { Icon(t.icon, contentDescription = null) },
                         label = { Text(t.label, fontSize = 14.sp) },
                     )

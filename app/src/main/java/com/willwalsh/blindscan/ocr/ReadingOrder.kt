@@ -3,32 +3,44 @@ package com.willwalsh.blindscan.ocr
 import kotlin.math.abs
 import kotlin.math.min
 
-/** Puts recognised pieces into reading order: top to bottom, left to right, split into paragraphs. */
+/**
+ * Reading order, worked out from the text boxes alone (before anything is recognised), so that
+ * lines can be read top to bottom and spoken while the rest of the page is still being read.
+ */
 object ReadingOrder {
 
-    private class Row(val cy: Float, val h: Float) {
-        val items = ArrayList<OcrEngine.Line>()
+    /** One printed line: the boxes on it (left to right) and its position. */
+    class Row(val cy: Float, val h: Float, val boxes: List<Int>)
+
+    class Layout(val rows: List<Row>, val typicalHeight: Float)
+
+    fun layout(boxes: List<TextBox>): Layout {
+        if (boxes.isEmpty()) return Layout(emptyList(), 0f)
+        class Acc(val cy: Float, val h: Float) { val items = ArrayList<Int>() }
+        val accs = ArrayList<Acc>()
+        for (i in boxes.indices.sortedBy { boxes[it].cy }) {
+            val b = boxes[i]
+            val h = min(b.w, b.h)
+            val row = accs.firstOrNull { abs(it.cy - b.cy) < 0.5f * min(it.h, h) }
+            if (row != null) row.items.add(i) else accs.add(Acc(b.cy, h).also { it.items.add(i) })
+        }
+        val rows = accs.sortedBy { it.cy }.map { a -> Row(a.cy, a.h, a.items.sortedBy { boxes[it].cx }) }
+        val heights = rows.map { it.h }.sorted()
+        return Layout(rows, heights[heights.size / 2])
     }
 
-    fun paragraphs(lines: List<OcrEngine.Line>): List<String> {
-        if (lines.isEmpty()) return emptyList()
-        val rows = ArrayList<Row>()
-        for (line in lines.sortedBy { it.box.cy }) {
-            val h = min(line.box.w, line.box.h)
-            val row = rows.firstOrNull { abs(it.cy - line.box.cy) < 0.5f * min(it.h, h) }
-            if (row != null) row.items.add(line) else rows.add(Row(line.box.cy, h).also { it.items.add(line) })
-        }
-        rows.sortBy { it.cy }
-        val heights = rows.map { it.h }.sorted()
-        val typical = heights[heights.size / 2]
-
+    /**
+     * Joins recognised row texts into paragraphs: a gap of more than ~1.8 line heights starts
+     * a new paragraph. Rows whose text came back empty are skipped.
+     */
+    fun paragraphs(layout: Layout, rowTexts: List<String>): List<String> {
         val paragraphs = ArrayList<String>()
         val current = ArrayList<String>()
         var lastCy = Float.NaN
-        for (row in rows) {
-            val text = row.items.sortedBy { it.box.cx }.joinToString(" ") { it.text }
-            // A gap of more than ~1.8 line heights starts a new paragraph.
-            if (!lastCy.isNaN() && row.cy - lastCy > typical * 1.8f && current.isNotEmpty()) {
+        for ((i, text) in rowTexts.withIndex()) {
+            if (text.isBlank()) continue
+            val row = layout.rows[i]
+            if (!lastCy.isNaN() && row.cy - lastCy > layout.typicalHeight * 1.8f && current.isNotEmpty()) {
                 paragraphs.add(current.joinToString("\n")); current.clear()
             }
             current.add(text)

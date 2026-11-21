@@ -1,5 +1,7 @@
 package com.willwalsh.blindscan.ui
 
+import android.content.Context
+import android.graphics.Bitmap
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -7,7 +9,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -16,24 +20,29 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.willwalsh.blindscan.LocalSettings
 import com.willwalsh.blindscan.BlindScanApp
+import com.willwalsh.blindscan.LocalSettings
 import com.willwalsh.blindscan.Voice
 import com.willwalsh.blindscan.camera.CameraHolder
 import com.willwalsh.blindscan.guidance.Guidance
 import com.willwalsh.blindscan.guidance.TiltSensor
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 @Composable
@@ -43,6 +52,43 @@ fun ScanScreen() {
         DocumentScreen(doc, onClose = { DocumentStore.close() })
     } else {
         ScanCamera()
+    }
+}
+
+/** Pages are read one at a time, in the background, so scanning can carry on meanwhile. */
+private val readingLock = Mutex()
+
+/**
+ * Reads [photo] in the background. [onProgress] gets the paragraphs so far (main thread);
+ * [onDone] gets the finished page (main thread). The photo is saved for "Share scan for testing".
+ */
+private fun readInBackground(
+    app: BlindScanApp,
+    context: Context,
+    photo: Bitmap,
+    onProgress: (List<String>) -> Unit,
+    onDone: (ScannedPage) -> Unit,
+) {
+    app.appScope.launch {
+        readingLock.withLock {
+            val file = ScanPhotos.save(context, photo)
+            val result = try {
+                app.documentEngine.read(
+                    photo, limit = 1600, correct = app.settings.wordCorrection,
+                    onProgress = { paras -> app.appScope.launch(Dispatchers.Main) { onProgress(paras) } },
+                )
+            } catch (t: Throwable) { null }
+            photo.recycle()
+            val page = ScannedPage(
+                paragraphs = result?.paragraphs ?: emptyList(),
+                photo = file,
+                reading = false,
+                detectMs = result?.detectMs ?: 0,
+                recognizeMs = result?.recognizeMs ?: 0,
+                lineConfidences = result?.lines?.map { it.confidence } ?: emptyList(),
+            )
+            withContext(Dispatchers.Main) { onDone(page) }
+        }
     }
 }
 
@@ -64,11 +110,58 @@ private fun ScanCamera() {
 
     var busy by remember { mutableStateOf(false) }
     var lightOn by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf("Hold the phone flat over the page, about a foot above it.") }
-    var latest by remember { mutableStateOf<Guidance.Report?>(null) }
-
     var userChoseLight by remember { mutableStateOf(false) } // once you press Light, auto light leaves it alone
+    val adding = DocumentStore.addingTo
+    var status by remember {
+        mutableStateOf(
+            if (adding != null) "Adding page ${adding.pages.size + 1}. Position the next page, then scan."
+            else "Hold the phone flat over the page, about a foot above it."
+        )
+    }
+    var latest by remember { mutableStateOf<Guidance.Report?>(null) }
+    val batch = DocumentStore.batch
+
     fun say(text: String) = announcer.say(text, view, settings.documentVoice == Voice.SCREEN_READER)
+
+    /** One page, read and shown straight away (or added to the document being built). */
+    fun scanSingle(photo: Bitmap) {
+        val doc = DocumentStore.startPage(null)
+        val docId = doc.id
+        readInBackground(app, context, photo,
+            onProgress = { paras -> DocumentStore.updateLastPage(docId) { it.copy(paragraphs = paras) } },
+            onDone = { page ->
+                val d = DocumentStore.open
+                if (page.paragraphs.isEmpty() && d != null && d.id == docId) {
+                    if (d.pages.size <= 1) {
+                        DocumentStore.open = null; DocumentStore.last = null
+                        say("No text found. Try Check view to position the page, then scan again.")
+                    } else {
+                        val back = d.copy(pages = d.pages.dropLast(1), readFrom = 0, revision = d.revision + 1)
+                        DocumentStore.open = null; DocumentStore.last = back; DocumentStore.addingTo = back
+                        say("No text found on that page. Position it and scan again.")
+                    }
+                } else {
+                    DocumentStore.updateLastPage(docId) { page.copy(key = it.key) }
+                }
+                ScanPhotos.tidy(context)
+            },
+        )
+    }
+
+    /** Batch mode: capture, say the page number, read in the background, stay on the camera. */
+    fun scanIntoBatch(photo: Bitmap) {
+        val placeholder = ScannedPage(reading = true)
+        DocumentStore.batch = DocumentStore.batch + placeholder
+        val n = DocumentStore.batch.size
+        status = "Page $n captured. Turn to the next page, or press Read pages."
+        say("Page $n captured.")
+        readInBackground(app, context, photo,
+            onProgress = { },
+            onDone = { page ->
+                DocumentStore.batch = DocumentStore.batch.map { if (it.key == placeholder.key) page.copy(key = it.key) else it }
+            },
+        )
+    }
 
     fun scan() {
         if (busy) return
@@ -81,23 +174,37 @@ private fun ScanCamera() {
                     camera.setTorch(true); lightOn = true
                 }
                 val photo = camera.capture()
-                status = "Reading the document."
-                say("Reading.")
-                val result = withContext(Dispatchers.Default) { app.documentEngine.read(photo, limit = 1600) }
-                photo.recycle()
-                if (result.isEmpty) {
-                    status = "No text found. Try Check view to position the page, then scan again."
-                    say(status)
-                } else {
-                    if (settings.vibration) vibrate(context, READY_BUZZ)
-                    DocumentStore.show(result)
-                }
+                if (settings.vibration) vibrate(context, TICK_BUZZ)
+                if (settings.batchMode && DocumentStore.addingTo == null) scanIntoBatch(photo) else scanSingle(photo)
             } catch (t: Throwable) {
                 status = "Couldn't take the picture. Please try again."
                 say(status)
             } finally {
                 busy = false
             }
+        }
+    }
+
+    fun finishBatch() {
+        if (DocumentStore.batch.isEmpty()) return
+        scope.launch {
+            if (DocumentStore.batch.any { it.reading }) {
+                status = "Finishing the last pages."
+                say(status)
+                snapshotFlow { DocumentStore.batch.any { it.reading } }.first { !it }
+            }
+            val pages = DocumentStore.batch.filter { it.paragraphs.isNotEmpty() }
+            val skipped = DocumentStore.batch.size - pages.size
+            DocumentStore.batch = emptyList()
+            if (pages.isEmpty()) {
+                status = "No text found on any page."
+                say(status)
+                return@launch
+            }
+            if (skipped > 0) say("$skipped ${if (skipped == 1) "page had" else "pages had"} no text and ${if (skipped == 1) "was" else "were"} left out.")
+            val d = ScannedDocument(pages)
+            DocumentStore.open = d; DocumentStore.last = d
+            if (settings.vibration) vibrate(context, READY_BUZZ)
         }
     }
 
@@ -148,7 +255,21 @@ private fun ScanCamera() {
             if (busy) CircularProgressIndicator()
             Text(status, fontSize = 20.sp, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
         }
-        BigButton("Scan document now", onClick = { scan() }, enabled = !busy)
+        val addingNow = DocumentStore.addingTo
+        BigButton(
+            when {
+                addingNow != null -> "Scan page ${addingNow.pages.size + 1}"
+                settings.batchMode -> "Scan page ${batch.size + 1}"
+                else -> "Scan document now"
+            },
+            onClick = { scan() }, enabled = !busy,
+        )
+        if (batch.isNotEmpty()) {
+            BigButton(
+                "Read ${batch.size} ${if (batch.size == 1) "page" else "pages"}",
+                onClick = { finishBatch() }, enabled = !busy,
+            )
+        }
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
             SmallButton("Check view", enabled = !busy, onClick = {
                 val r = latest
@@ -159,10 +280,26 @@ private fun ScanCamera() {
                 say(if (lightOn) "Light on." else "Light off.")
             })
         }
+        if (DocumentStore.addingTo == null) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 56.dp)
+                    .toggleable(value = settings.batchMode, role = Role.Switch, onValueChange = {
+                        settings.batchMode = it
+                        say(if (it) "Batch scanning on. Scan each page, then press Read pages." else "Batch scanning off.")
+                    })
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Batch scanning", fontSize = 19.sp, modifier = Modifier.weight(1f))
+                Switch(checked = settings.batchMode, onCheckedChange = null)
+            }
+        }
         val last = DocumentStore.last
-        if (last != null) {
+        if (last != null && batch.isEmpty() && DocumentStore.addingTo == null) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
-                SmallButton("Open last document", onClick = { DocumentStore.open = last })
+                SmallButton("Open last document", onClick = { DocumentStore.open = last.copy(readFrom = 0) })
             }
         }
     }

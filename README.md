@@ -28,6 +28,18 @@ Everything runs on the phone. The app has **no internet permission at all**, so 
   The same actions are on every paragraph as **accessibility actions**: with TalkBack's reading control set to Actions, swipe up or down and double tap.
 - **Upside-down and sideways pages** are turned the right way round automatically.
 
+## New in 0.2.0
+
+- **Faster**:
+  - Lines are read in parallel on several processor cores.
+  - The XNNPACK fast math library is used where the phone supports it.
+  - The document opens the moment you scan, and with Android text to speech the first sentences are spoken while the rest of the page is still being read.
+- **Unclear words corrected**: a low-confidence word is checked against similar English words using the recognizer's own letter probabilities. It is replaced only when the evidence is clearly better. Numbers are never changed into other numbers, and confidently read words (names) are left alone. On small unusual fonts this removed about 17% of errors, with no correct words made wrong.
+- **Batch scanning**: scan page after page, each read in the background. Then *Read pages* opens them as one document, with a heading per page.
+- **Add another page** to a document from Document actions.
+- **Press the Scan document tab again** to clear the scan and start fresh.
+- **Share scan for testing**: sends the original photos plus a report (text, confidence, timings, phone details).
+
 ## The reading engine
 
 PaddleOCR **PP-OCRv6**, a deep-learning OCR model under the Apache 2.0 licence, running in Microsoft's ONNX Runtime. The models ship inside the app (about 37 MB), so it works in airplane mode.
@@ -37,6 +49,8 @@ PaddleOCR **PP-OCRv6**, a deep-learning OCR model under the Apache 2.0 licence, 
 | Document scans | PP-OCRv6 small | **0.15%** | ~1.8 s/page |
 | Live mode | PP-OCRv6 tiny | 0.8% | ~0.5 s/frame |
 | (older, for comparison) | PP-OCRv5 | 1.6% | ~2.4 s/page |
+
+Rejected after testing: int8-compressed models made errors 4 to 30 times worse and weren't faster. So the app keeps the full-precision models.
 
 The hard test set includes thin, extra-light, italic, black italic, condensed and monospace fonts, as well as:
 - blur, dim light, low contrast, noise and uneven lighting;
@@ -74,10 +88,10 @@ Not tested yet:
 app/src/main/java/com/willwalsh/blindscan/
   MainActivity.kt        tabs, volume-button capture
   Settings.kt            all settings
-  ocr/                   OCR engine (ONNX Runtime), geometry, reading order
+  ocr/                   OCR engine (ONNX Runtime), geometry, reading order, word correction
   camera/                CameraX preview, capture, frames, light
   guidance/              positioning prompts, page edges, tilt
-  speech/                text to speech with DVR controls, sentence splitting
+  speech/                text to speech with DVR controls, sentence splitting, streaming
   ui/                    the four tabs and the document screen
 app/src/main/assets/models/   PP-OCRv6 small + tiny, orientation classifier
 tools/ocr-testbench/     Python reference pipeline + hard test-page generator
@@ -85,4 +99,4 @@ tools/ocr-testbench/     Python reference pipeline + hard test-page generator
 
 ## Licences
 
-App code: yours. OCR models: PaddleOCR (Apache 2.0), ONNX conversions from the OnnxOCR project (Apache 2.0); see `MODELS-LICENSE.txt`. ONNX Runtime: MIT.
+App code: yours. English word list: SymSpell frequency dictionary (MIT), see `WORDLIST-LICENSE.txt`. OCR models: PaddleOCR (Apache 2.0), ONNX conversions from the OnnxOCR project (Apache 2.0); see `MODELS-LICENSE.txt`. ONNX Runtime: MIT.

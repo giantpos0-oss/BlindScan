@@ -1,6 +1,8 @@
 package com.willwalsh.blindscan.ui
 
 import android.content.Context
+import android.graphics.Bitmap
+import java.io.File
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -35,7 +37,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.willwalsh.blindscan.ocr.OcrEngine
 import com.willwalsh.blindscan.speech.Announcer
 import com.willwalsh.blindscan.speech.Reader
 
@@ -65,23 +66,92 @@ object VolumeKeys {
     @Volatile var handler: (() -> Unit)? = null
 }
 
-/** The scanned document, kept while you move between tabs. */
-data class ScannedDocument(val paragraphs: List<String>, val time: Long = System.currentTimeMillis()) {
+/** One scanned page: its paragraphs, the photo it came from, and how the reading went. */
+data class ScannedPage(
+    val paragraphs: List<String> = emptyList(),
+    val key: Long = System.nanoTime(),
+    val photo: File? = null,
+    val reading: Boolean = false,
+    val detectMs: Long = 0,
+    val recognizeMs: Long = 0,
+    val lineConfidences: List<Float> = emptyList(),
+) {
     val text: String get() = paragraphs.joinToString("\n\n")
+}
+
+/**
+ * A scanned document of one or more pages. [readFrom] is the first page to read aloud when the
+ * document opens (a newly added page is read on its own). [revision] changes on every update.
+ */
+data class ScannedDocument(
+    val pages: List<ScannedPage>,
+    val id: Long = System.nanoTime(),
+    val readFrom: Int = 0,
+    val revision: Int = 0,
+) {
+    val reading: Boolean get() = pages.any { it.reading }
+    val text: String get() = textOf(0)
+    /** Text of the pages from [from] on, with "Page N" headings when there is more than one page. */
+    fun textOf(from: Int): String =
+        if (pages.size == 1) pages[0].text
+        else pages.withIndex().drop(from).joinToString("\n\n") { (i, p) -> "Page ${i + 1}\n\n${p.text}" }
 }
 
 object DocumentStore {
     /** The document on screen right now, or null when the camera is showing. */
     var open by mutableStateOf<ScannedDocument?>(null)
-    /** The most recent scan, so "Open last document" can bring it back. */
+    /** The most recent document, so "Open last document" can bring it back. */
     var last by mutableStateOf<ScannedDocument?>(null)
+    /** Pages scanned in batch mode that haven't been opened as a document yet. */
+    var batch by mutableStateOf<List<ScannedPage>>(emptyList())
+    /** When set, the next scan is added to this document as a new page. */
+    var addingTo by mutableStateOf<ScannedDocument?>(null)
 
-    fun show(result: OcrEngine.Result) {
-        val d = ScannedDocument(result.paragraphs)
-        open = d; last = d
+    /** Opens a document for a page that is being read right now (or adds it to [addingTo]). */
+    fun startPage(photo: File?): ScannedDocument {
+        val base = addingTo
+        addingTo = null
+        val page = ScannedPage(photo = photo, reading = true)
+        val doc = if (base != null) base.copy(pages = base.pages + page, readFrom = base.pages.size, revision = base.revision + 1, id = System.nanoTime())
+        else ScannedDocument(listOf(page))
+        open = doc; last = doc
+        return doc
     }
+
+    /** Replaces the last page of the open document (same id: reading carries on). */
+    fun updateLastPage(docId: Long, change: (ScannedPage) -> ScannedPage) {
+        // The document may still be on screen, or you may have gone back to the camera meanwhile.
+        val d = open?.takeIf { it.id == docId } ?: last?.takeIf { it.id == docId } ?: return
+        val pages = d.pages.toMutableList()
+        pages[pages.size - 1] = change(pages.last())
+        val nd = d.copy(pages = pages, revision = d.revision + 1)
+        if (open?.id == docId) open = nd
+        last = nd
+    }
+
     fun close() { open = null }
-    fun discard() { open = null; last = null }
+
+    /** Removes the open document, any pages waiting in a batch, and any half-added page. */
+    fun clearAll() { open = null; last = null; batch = emptyList(); addingTo = null }
+}
+
+/** Photos of recent scans, kept in the app's private cache so they can be shared for testing. */
+object ScanPhotos {
+    fun dir(context: Context) = File(context.cacheDir, "scans").also { it.mkdirs() }
+
+    fun save(context: Context, bitmap: Bitmap): File? = try {
+        val f = File(dir(context), "scan-${System.currentTimeMillis()}.jpg")
+        f.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 92, it) }
+        f
+    } catch (_: Throwable) { null }
+
+    /** Deletes photos no document refers to any more. */
+    fun tidy(context: Context) {
+        val keep = HashSet<String>()
+        listOfNotNull(DocumentStore.open, DocumentStore.last, DocumentStore.addingTo).forEach { d -> d.pages.forEach { p -> p.photo?.let { keep.add(it.name) } } }
+        DocumentStore.batch.forEach { p -> p.photo?.let { keep.add(it.name) } }
+        dir(context).listFiles()?.forEach { if (it.name !in keep) it.delete() }
+    }
 }
 
 fun vibrate(context: Context, pattern: LongArray) {

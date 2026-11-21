@@ -22,9 +22,18 @@ class Reader(context: Context) {
         val chunks: List<String> = emptyList(),
         val index: Int = 0,
         val playing: Boolean = false,
+        /** More text is still arriving (the page is still being read). */
+        val streaming: Boolean = false,
     ) {
         val hasText get() = chunks.isNotEmpty()
-        val position get() = if (chunks.isEmpty()) "" else "Sentence ${index + 1} of ${chunks.size}"
+        val waiting get() = streaming && index >= chunks.size
+        val position get() = when {
+            chunks.isEmpty() && streaming -> "Reading the page."
+            chunks.isEmpty() -> ""
+            index >= chunks.size -> "Reading more of the page."
+            streaming -> "Sentence ${index + 1}, more coming"
+            else -> "Sentence ${index + 1} of ${chunks.size}"
+        }
     }
 
     private val _state = MutableStateFlow(State())
@@ -62,6 +71,9 @@ class Reader(context: Context) {
                 if (s.index + 1 < s.chunks.size) {
                     _state.update { it.copy(index = it.index + 1) }
                     speakCurrent()
+                } else if (s.streaming) {
+                    // Caught up with the reading: wait here; appendStream() carries on.
+                    _state.update { it.copy(index = it.chunks.size) }
                 } else {
                     _state.update { it.copy(playing = false) }
                 }
@@ -76,6 +88,32 @@ class Reader(context: Context) {
         tts.stop()
         _state.value = State(chunks = Chunker.sentences(text), index = 0, playing = false)
         if (autoPlay) play()
+    }
+
+    /** Starts an empty reading that text will be added to as the page is read. */
+    fun startStream(autoPlay: Boolean) {
+        tts.stop()
+        _state.value = State(chunks = emptyList(), index = 0, playing = autoPlay, streaming = true)
+    }
+
+    /** Adds finished sentences. If speech was waiting for them, it carries on straight away. */
+    fun appendStream(more: List<String>) {
+        if (more.isEmpty()) return
+        val before = _state.value
+        _state.update { it.copy(chunks = it.chunks + more) }
+        if (before.playing && before.index >= before.chunks.size) {
+            _state.update { it.copy(index = before.chunks.size) }
+            if (ready) speakCurrent() else pendingPlay = true
+        }
+    }
+
+    /** No more text is coming. */
+    fun endStream() {
+        val s = _state.value
+        _state.update {
+            if (s.index >= s.chunks.size) it.copy(streaming = false, playing = false, index = (s.chunks.size - 1).coerceAtLeast(0))
+            else it.copy(streaming = false)
+        }
     }
 
     fun play() {
@@ -100,7 +138,7 @@ class Reader(context: Context) {
     private fun jump(delta: Int) {
         val s = _state.value
         if (!s.hasText) return
-        val i = (s.index + delta).coerceIn(0, s.chunks.size - 1)
+        val i = (s.index.coerceAtMost(s.chunks.size - 1) + delta).coerceIn(0, s.chunks.size - 1)
         _state.update { it.copy(index = i, playing = true) }
         if (ready) speakCurrent() else pendingPlay = true
     }
@@ -178,6 +216,23 @@ object Chunker {
                 out[out.size - 1] = "$prev $p"
             } else out.add(p)
         }
+        return out
+    }
+}
+
+/**
+ * Feeds a page that is still being read to the Reader: each call returns only the sentences
+ * that are finished and haven't been handed out yet. The last sentence is held back until
+ * more text arrives (it may not be complete), and released when [done] is true.
+ */
+class StreamChunker {
+    private var given = 0
+    fun take(textSoFar: String, done: Boolean): List<String> {
+        val all = Chunker.sentences(textSoFar)
+        val ready = if (done) all else all.dropLast(1)
+        if (ready.size <= given) return emptyList()
+        val out = ready.subList(given, ready.size).toList()
+        given = ready.size
         return out
     }
 }

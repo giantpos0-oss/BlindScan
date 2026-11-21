@@ -36,6 +36,26 @@ private val HELP = listOf(
         "Check view gives a full report whenever you want one: roughly how many lines of text it can see, " +
             "whether any text runs off an edge, whether the page's edges are visible, and the lighting.",
         "Open last document brings back your most recent scan.",
+        "To clear a scan and start fresh, press the Scan document tab again, even while a document is showing. " +
+            "Everything you scanned is cleared, ready for a new page.",
+    ),
+    "Fast results" to listOf(
+        "As soon as you scan, the document opens and the first lines are read out while the rest of the page " +
+            "is still being read. With Android text to speech the controls work straight away. With a screen " +
+            "reader, the whole page is announced when it's finished.",
+    ),
+    "Several pages" to listOf(
+        "Batch scanning: turn on the Batch scanning switch on the Scan document tab. Scan each page in turn; " +
+            "you'll hear \"Page 1 captured\", \"Page 2 captured\" and so on, and each page is read in the " +
+            "background while you turn to the next one. When you're done, press Read pages. The pages open as " +
+            "one document, with a heading for each page so you can jump between them.",
+        "Adding a page to a document you've already scanned: choose Add another page from Document actions, " +
+            "then scan. The new page is read on its own, then added to the document.",
+    ),
+    "Unclear words" to listOf(
+        "When a word comes out unclear, BlindScan compares what it saw with similar English words and fixes " +
+            "the word only when the evidence is clearly better. Numbers are never changed into other numbers, " +
+            "and words it read confidently, like names, are left alone. You can turn this off in Settings.",
     ),
     "What the positioning prompts mean" to listOf(
         "\"Lift the phone up a little\": the text runs off both sides, so move the phone higher above the page.",
@@ -54,11 +74,13 @@ private val HELP = listOf(
     "Reading your document" to listOf(
         "When a scan finishes, the text is read straight away: by your screen reader, or by Android text to " +
             "speech with the DVR controls, whichever you chose in Settings.",
-        "The Document actions button at the top right offers: Read aloud, Save to device, Share, Copy text, " +
-            "Scan another document, and Discard.",
+        "The Document actions button at the top right offers: Read aloud, Save to device, Share text, Copy text, " +
+            "Add another page, Share scan for testing, New scan, and Discard.",
         "With TalkBack, every paragraph also has these as actions. Set your reading control to Actions, then " +
             "swipe up or down to pick one and double tap. Or open the TalkBack menu and choose Actions.",
-        "Save to device saves a text file wherever you choose. Share sends the text to any app, such as email or messages.",
+        "Save to device saves a text file wherever you choose. Share text sends the text to any app, such as email or messages.",
+        "Share scan for testing sends the original photos with a report of what was recognised, how sure the " +
+            "app was, and how long it took. It's for sending a tricky scan to the developer so the reading can be improved.",
     ),
     "Tips for the best results" to listOf(
         "Flat pages read best. Smooth out folds if you can.",

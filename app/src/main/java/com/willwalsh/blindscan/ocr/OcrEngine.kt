@@ -5,6 +5,11 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.graphics.Bitmap
+import java.util.concurrent.Callable
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
+import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.cos
@@ -17,10 +22,19 @@ import kotlin.math.sin
  * Fully on-device OCR: PaddleOCR PP-OCRv6 (Apache 2.0) running in ONNX Runtime.
  * No network access is involved anywhere (the app doesn't even have the internet permission).
  *
- *  SMALL = best accuracy, used for document scans.   (0.15% character errors on our hard test set)
- *  TINY  = about 4x faster, used for live mode.      (0.8% character errors on the same set)
+ *  SMALL = best accuracy, used for document scans.
+ *  TINY  = about 4x faster, used for live mode and positioning guidance.
+ *
+ * Speed: lines are recognised in parallel on several cores, and the XNNPACK math library is used
+ * when the phone supports it. Results are delivered row by row in reading order, so speech can
+ * start before the whole page is finished.
  */
-class OcrEngine(context: Context, val model: Model) : AutoCloseable {
+class OcrEngine(
+    context: Context,
+    val model: Model,
+    private val corrector: WordCorrector? = null,
+    fastMath: Boolean = true,
+) : AutoCloseable {
 
     enum class Model(val det: String, val rec: String, val dict: String) {
         SMALL("models/det_small.onnx", "models/rec_small.onnx", "models/dict_small.txt"),
@@ -29,22 +43,62 @@ class OcrEngine(context: Context, val model: Model) : AutoCloseable {
 
     data class Line(val text: String, val box: TextBox, val confidence: Float)
 
-    data class Result(val lines: List<Line>, val paragraphs: List<String>) {
+    data class Result(
+        val lines: List<Line>,
+        val paragraphs: List<String>,
+        val detectMs: Long = 0,
+        val recognizeMs: Long = 0,
+    ) {
         val text: String get() = paragraphs.joinToString("\n\n")
         val isEmpty: Boolean get() = paragraphs.isEmpty()
     }
 
     private val env = OrtEnvironment.getEnvironment()
-    private val options = OrtSession.SessionOptions().apply {
-        setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
-        setIntraOpNumThreads(Runtime.getRuntime().availableProcessors().coerceIn(2, 4))
+    private val cores = Runtime.getRuntime().availableProcessors()
+    private val workers = (cores / 2).coerceIn(2, 4)
+    private val pool: ExecutorService = Executors.newFixedThreadPool(workers)
+
+    /** True when the XNNPACK math library is in use. */
+    var usingFastMath = false
+        private set
+
+    private fun createSession(bytes: ByteArray, threads: Int, xnn: Boolean): OrtSession {
+        if (xnn) {
+            try {
+                val o = OrtSession.SessionOptions().apply {
+                    setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+                    setIntraOpNumThreads(1)
+                    addConfigEntry("session.intra_op.allow_spinning", "0")
+                    addXnnpack(mapOf("intra_op_num_threads" to threads.toString()))
+                }
+                val s = env.createSession(bytes, o)
+                usingFastMath = true
+                return s
+            } catch (_: Throwable) {
+                // XNNPACK not available on this phone: fall through to the standard engine.
+            }
+        }
+        val o = OrtSession.SessionOptions().apply {
+            setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+            setIntraOpNumThreads(threads)
+        }
+        return env.createSession(bytes, o)
     }
-    private val det: OrtSession = env.createSession(context.assets.open(model.det).use { it.readBytes() }, options)
-    private val rec: OrtSession = env.createSession(context.assets.open(model.rec).use { it.readBytes() }, options)
-    private val cls: OrtSession = env.createSession(context.assets.open("models/cls.onnx").use { it.readBytes() }, options)
+
+    private fun asset(context: Context, name: String) = context.assets.open(name).use { it.readBytes() }
+
+    // Detection is one big job: give it several threads. Recognition runs many lines side by side,
+    // so each line gets one thread.
+    private val det: OrtSession = createSession(asset(context, model.det), min(4, cores), fastMath)
+    private val rec: OrtSession = createSession(asset(context, model.rec), 1, fastMath)
+    private val cls: OrtSession = createSession(asset(context, "models/cls.onnx"), 1, fastMath)
+
     // CTC classes: 0 = blank, 1..n = dictionary, n+1 = space.
     private val keys: List<String> =
         listOf("") + context.assets.open(model.dict).bufferedReader().readLines() + listOf(" ")
+    private val keyIndex: Map<String, Int> = HashMap<String, Int>().also { m ->
+        for (i in keys.indices) if (keys[i].length == 1 && !m.containsKey(keys[i])) m[keys[i]] = i
+    }
 
     private val detInput = det.inputNames.first()
     private val recInput = rec.inputNames.first()
@@ -75,8 +129,11 @@ class OcrEngine(context: Context, val model: Model) : AutoCloseable {
 
     // ---------------------------------------------------------------- recognition
 
-    /** Reads one cropped line. Returns text and mean character confidence. */
-    fun recognize(crop: Bitmap): Pair<String, Float> {
+    data class LineRead(val text: String, val confidence: Float)
+
+    private class RawRead(val chars: List<DecodedChar>, val confidence: Float, val probs: FrameProbs)
+
+    private fun recognizeRaw(crop: Bitmap): RawRead {
         val width = max(320, ceil(48f * crop.width / crop.height).toInt())
         val input = ImageTensors.recognition(crop, width)
         OnnxTensor.createTensor(env, input, longArrayOf(1, 3, 48, width.toLong())).use { t ->
@@ -84,9 +141,9 @@ class OcrEngine(context: Context, val model: Model) : AutoCloseable {
                 val out = res.get(0) as OnnxTensor
                 val shape = out.info.shape // [1, T, C]
                 val steps = shape[1].toInt(); val classes = shape[2].toInt()
-                val buf = out.floatBuffer
-                val sb = StringBuilder()
-                var prev = 0; var confSum = 0f; var confN = 0
+                val buf = out.floatBuffer // a copy: stays valid after the result is closed
+                val chars = ArrayList<DecodedChar>()
+                var prev = 0
                 for (t2 in 0 until steps) {
                     var best = 0; var bestP = -1f
                     val base = t2 * classes
@@ -94,15 +151,31 @@ class OcrEngine(context: Context, val model: Model) : AutoCloseable {
                         val p = buf.get(base + c)
                         if (p > bestP) { bestP = p; best = c }
                     }
-                    if (best != 0 && best != prev) {
-                        if (best < keys.size) sb.append(keys[best])
-                        confSum += bestP; confN++
-                    }
+                    if (best != 0 && best != prev) chars.add(DecodedChar(if (best < keys.size) keys[best] else "", t2, bestP))
                     prev = best
                 }
-                return Pair(sb.toString().trim(), if (confN == 0) 0f else confSum / confN)
+                while (chars.isNotEmpty() && chars.first().s == " ") chars.removeAt(0)
+                while (chars.isNotEmpty() && chars.last().s == " ") chars.removeAt(chars.size - 1)
+                val conf = if (chars.isEmpty()) 0f else chars.map { it.prob }.average().toFloat()
+                return RawRead(chars, conf, BufferProbs(buf, steps, classes))
             }
         }
+    }
+
+    /** Reads one straightened line: sharpened second try if unsure, then word correction. */
+    fun recognize(crop: Bitmap, retryBlurry: Boolean = true, correct: Boolean = true): LineRead {
+        var raw = recognizeRaw(crop)
+        if (retryBlurry && raw.confidence < 0.8f) {
+            val sharp = ImageTensors.sharpenForRetry(crop)
+            val second = recognizeRaw(sharp)
+            sharp.recycle()
+            if (second.confidence > raw.confidence) raw = second
+        }
+        val plain = raw.chars.joinToString("") { it.s }
+        val text = if (correct && corrector != null && raw.chars.isNotEmpty()) {
+            try { corrector.correctLine(raw.chars, raw.probs, keyIndex) } catch (_: Throwable) { plain }
+        } else plain
+        return LineRead(text.trim(), raw.confidence)
     }
 
     /** True when the orientation classifier is confident a line is upside down. */
@@ -125,6 +198,9 @@ class OcrEngine(context: Context, val model: Model) : AutoCloseable {
      * @param orient      fix sideways / upside-down pages (whole-page majority vote)
      * @param adaptive    re-detect at higher detail when the print is very small
      * @param retryBlurry second pass with sharpening for low-confidence lines
+     * @param correct     fix low-confidence words with the dictionary
+     * @param onProgress  called (on a background thread) with the paragraphs read so far,
+     *                    after each printed line is finished, top to bottom
      */
     fun read(
         source: Bitmap,
@@ -132,13 +208,16 @@ class OcrEngine(context: Context, val model: Model) : AutoCloseable {
         orient: Boolean = true,
         adaptive: Boolean = true,
         retryBlurry: Boolean = true,
+        correct: Boolean = true,
+        onProgress: ((List<String>) -> Unit)? = null,
     ): Result {
+        val start = System.currentTimeMillis()
         var img = source
         var boxes = detect(img, limit)
-        if (boxes.isEmpty()) return Result(emptyList(), emptyList())
+        if (boxes.isEmpty()) return Result(emptyList(), emptyList(), System.currentTimeMillis() - start, 0)
 
         if (orient) {
-            // Sideways page: most lines run up/down. Turn the image 90 degrees clockwise.
+            // Sideways page: most lines run up/down. Turn the image 90 degrees clockwise and look again.
             val tall = boxes.count { isVertical(it) }
             if (tall > boxes.size - tall) {
                 img = ImageTensors.rotate(img, 90)
@@ -153,8 +232,12 @@ class OcrEngine(context: Context, val model: Model) : AutoCloseable {
                 crop.recycle()
             }
             if (votes > 0) {
-                img = ImageTensors.rotate(img, 180)
-                boxes = detect(img, limit)
+                val w = img.width.toFloat(); val h = img.height.toFloat()
+                val turned = ImageTensors.rotate(img, 180)
+                if (img !== source) img.recycle()
+                img = turned
+                // Same boxes, turned with the page: no need to search the page again.
+                boxes = boxes.map { it.copy(cx = w - it.cx, cy = h - it.cy, angle = it.angle + PI.toFloat()) }
             }
         }
 
@@ -166,26 +249,43 @@ class OcrEngine(context: Context, val model: Model) : AutoCloseable {
                 if (more.size >= boxes.size) boxes = more
             }
         }
+        val detectMs = System.currentTimeMillis() - start
 
+        // Recognise every line in parallel, queued in reading order so the top finishes first.
+        val layout = ReadingOrder.layout(boxes)
+        val page = img
+        val futures = HashMap<Int, Future<LineRead?>>()
+        for (row in layout.rows) for (i in row.boxes) {
+            futures[i] = pool.submit(Callable {
+                try {
+                    val c = crop(page, boxes[i])
+                    val r = recognize(c, retryBlurry, correct)
+                    c.recycle()
+                    r
+                } catch (_: Throwable) { null }
+            })
+        }
         val lines = ArrayList<Line>()
-        for (b in boxes) {
-            val crop = crop(img, b)
-            var (text, conf) = recognize(crop)
-            if (retryBlurry && conf < 0.8f) {
-                val sharp = ImageTensors.sharpenForRetry(crop)
-                val (t2, c2) = recognize(sharp)
-                sharp.recycle()
-                if (c2 > conf) { text = t2; conf = c2 }
+        val rowTexts = ArrayList<String>()
+        for (row in layout.rows) {
+            val parts = ArrayList<String>()
+            for (i in row.boxes) {
+                val r = futures[i]?.get() ?: continue
+                if (r.text.isNotEmpty() && r.confidence >= 0.5f) {
+                    lines.add(Line(r.text, boxes[i], r.confidence))
+                    parts.add(r.text)
+                }
             }
-            crop.recycle()
-            if (text.isNotEmpty() && conf >= 0.5f) lines.add(Line(text, b, conf))
+            rowTexts.add(parts.joinToString(" "))
+            onProgress?.invoke(ReadingOrder.paragraphs(layout, rowTexts))
         }
         if (img !== source) img.recycle()
-        return Result(lines, ReadingOrder.paragraphs(lines))
+        val total = System.currentTimeMillis() - start
+        return Result(lines, ReadingOrder.paragraphs(layout, rowTexts), detectMs, total - detectMs)
     }
 
     private fun isVertical(b: TextBox): Boolean {
-        val dir = if (b.w >= b.h) b.angle else b.angle + (Math.PI / 2).toFloat()
+        val dir = if (b.w >= b.h) b.angle else b.angle + (PI / 2).toFloat()
         val long = max(b.w, b.h); val short = min(b.w, b.h)
         return abs(sin(dir)) > 0.7f && long > 2 * short
     }
@@ -200,6 +300,7 @@ class OcrEngine(context: Context, val model: Model) : AutoCloseable {
     }
 
     override fun close() {
-        det.close(); rec.close(); cls.close(); options.close()
+        pool.shutdown()
+        det.close(); rec.close(); cls.close()
     }
 }

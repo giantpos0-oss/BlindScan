@@ -107,7 +107,7 @@ class CameraHolder(private val context: Context) {
         camera?.cameraControl?.enableTorch(on)
     }
 
-    /** Focuses on the centre of the view (waits up to 1.5 s), then takes a full-resolution photo. */
+    /** Focuses on the centre of the view (waits up to 1 s), then takes a full-resolution photo. */
     suspend fun capture(): Bitmap {
         focusCentre()
         return suspendCancellableCoroutine { cont ->
@@ -131,7 +131,7 @@ class CameraHolder(private val context: Context) {
             .setAutoCancelDuration(3, TimeUnit.SECONDS)
             .build()
         val future = cam.cameraControl.startFocusAndMetering(action)
-        withTimeoutOrNull(1500) {
+        withTimeoutOrNull(1000) {
             suspendCancellableCoroutine<Unit> { cont ->
                 future.addListener({ if (cont.isActive) cont.resume(Unit) }, ContextCompat.getMainExecutor(context))
             }

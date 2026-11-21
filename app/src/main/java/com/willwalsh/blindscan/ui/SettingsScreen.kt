@@ -43,6 +43,11 @@ fun SettingsScreen() {
         VoiceChoice(s.liveVoice) { s.liveVoice = it }
         Toggle("Best accuracy in live mode (slower)", s.liveBestAccuracy) { s.liveBestAccuracy = it }
 
+        Section("Accuracy and speed")
+        Toggle("Correct unclear words using an English dictionary (numbers are never changed)", s.wordCorrection) { s.wordCorrection = it }
+        Toggle("Fast math engine (XNNPACK). Turn off only if scans fail or get slower", s.fastMath) { s.fastMath = it }
+        Toggle("Batch scanning: scan several pages, then read them together", s.batchMode) { s.batchMode = it }
+
         Section("Speech")
         val rateText = String.format(Locale.getDefault(), "%.1f times normal speed", s.speechRate)
         Text("Speech rate for Android text to speech: $rateText", fontSize = 19.sp, modifier = Modifier.padding(horizontal = 16.dp))

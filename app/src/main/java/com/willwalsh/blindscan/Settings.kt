@@ -66,6 +66,23 @@ class Settings(context: Context) {
     var liveBestAccuracy: Boolean
         get() = _liveBestAccuracy.value
         set(v) { _liveBestAccuracy.value = v; save("liveBestAccuracy", v) }
+    private val _batchMode = bool("batchMode", false)
+    var batchMode: Boolean
+        get() = _batchMode.value
+        set(v) { _batchMode.value = v; save("batchMode", v) }
+
+    private val _wordCorrection = bool("wordCorrection", true)
+    var wordCorrection: Boolean
+        get() = _wordCorrection.value
+        set(v) { _wordCorrection.value = v; save("wordCorrection", v) }
+
+    private val _fastMath = bool("fastMath", true)
+    var fastMath: Boolean
+        get() = _fastMath.value
+        set(v) { _fastMath.value = v; save("fastMath", v); onEngineSettingChanged?.invoke() }
+
+    /** Set by the app so engines can be rebuilt when an engine setting changes. */
+    var onEngineSettingChanged: (() -> Unit)? = null
 }
 
 val LocalSettings = staticCompositionLocalOf<Settings> { error("Settings not provided") }
