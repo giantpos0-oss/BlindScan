@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -55,3 +58,17 @@ jobs:
           path: |
             app/build/outputs/apk/debug/*.apk
             app/build/outputs/apk/release/*.apk
+      # Publish the signed APK as a public download (no GitHub sign-in needed):
+      # https://github.com/<owner>/<repo>/releases/latest/download/BlindScan.apk
+      - name: Publish download
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ver=$(grep -m1 'versionName' app/build.gradle.kts | sed 's/.*"\(.*\)".*/\1/')
+          cp "$(ls app/build/outputs/apk/release/*.apk | head -1)" BlindScan.apk
+          if gh release view "v$ver" >/dev/null 2>&1; then
+            gh release upload "v$ver" BlindScan.apk --clobber
+          else
+            gh release create "v$ver" BlindScan.apk --title "BlindScan $ver" --notes "Install BlindScan.apk on your Android phone." --latest
+          fi
