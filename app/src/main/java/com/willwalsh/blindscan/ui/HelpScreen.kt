@@ -105,7 +105,7 @@ private val HELP = listOf(
     ),
     "Volume buttons" to listOf(
         "While the Scan document tab is showing the camera, either volume button takes the picture, even with " +
-            "TalkBack on. On every other screen the volume buttons work normally. You can turn this off in Settings, Accuracy and speed.",
+            "TalkBack on. On every other screen the volume buttons work normally. You can turn this off in Settings, Camera and positioning.",
     ),
     "Reading your document" to listOf(
         "When a scan finishes, the text is read straight away: by your screen reader, or by Android text to " +
