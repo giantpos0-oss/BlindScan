@@ -6,14 +6,14 @@ plugins {
 
 android {
     namespace = "com.willwalsh.blindscan"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.willwalsh.blindscan"
         minSdk = 26
         targetSdk = 35
-        versionCode = 15
-        versionName = "0.2.13"
+        versionCode = 16
+        versionName = "0.3.0"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
 
@@ -44,13 +44,16 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
     androidResources { noCompress += listOf("onnx") }
     // The user guide and release notes (docs/*.md) are bundled so the Help tab works offline.
     // They are the same files the Help tab's browser buttons open, so there is only one copy to update.
     sourceSets { getByName("main") { assets.srcDir(rootProject.file("docs")) } }
     packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
+}
+
+kotlin {
+    compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
 }
 
 dependencies {
@@ -71,4 +74,8 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
+
+    // Ask a question: the phone's built-in AI (Gemini Nano through Android's AICore).
+    implementation("com.google.mlkit:genai-prompt:1.0.0-beta5")
+
 }

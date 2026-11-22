@@ -2,7 +2,7 @@
 
 BlindScan turns print into speech. It was made by a blind person for blind people. It is free, and it always will be.
 
-Everything happens on your phone. BlindScan has no internet access at all, so nothing you scan can ever leave the device. It works the same in airplane mode.
+Everything happens on your phone, and nothing you scan leaves it. The one exception is optional: if you turn on a cloud AI for Ask a question, the text of a document you ask about is sent to the company you chose. It's off until you set it up. Reading works the same in airplane mode.
 
 This guide covers the latest version of BlindScan. To see what changed in each version, open the release notes from the top of the Help tab.
 
@@ -11,6 +11,8 @@ This guide covers the latest version of BlindScan. To see what changed in each v
 There are four tabs along the bottom of the screen: Live mode, Scan document, Help, and Settings.
 
 At the top left of every screen except Live mode is a Navigate up button. On a document it goes back to the camera. In a settings group it goes back to the list of settings. Everywhere else it goes to Live mode.
+
+Once you've scanned something, an Ask a question button sits at the bottom right of every screen. See Ask a question, below.
 
 The first time you open Live mode or Scan document, BlindScan asks to use the camera. Press Allow camera, then allow it in the window Android shows you.
 
@@ -74,6 +76,8 @@ While the Scan document tab is showing the camera, either volume button takes th
 If you'd rather not press anything, turn on Scan automatically when ready in Settings, Camera and positioning. BlindScan then takes the picture by itself after it has been ready for about a second.
 
 You'll hear "Scanning. Hold still." and feel a short buzz when the picture has been taken.
+
+To scan a page and go straight to asking about it, press Scan and ask a question instead. You get the same positioning prompts. With Scan automatically when ready on, it takes the picture by itself when the page is in view; otherwise it takes it as soon as you press the button. You'll hear "Reading the page for your question." The page isn't read aloud: Ask a question opens as soon as it's read.
 
 ### Check view
 
@@ -170,6 +174,27 @@ Share text sends the text to any app, such as email or messages. Copy text puts 
 
 Share scan for testing sends the original photos with a report of what was recognised, how sure the app was, and how long it took. It's for sending a tricky scan to the developer so the reading can be improved. Nothing is sent unless you choose this and pick where to send it.
 
+## Ask a question
+
+Ask anything about the document you scanned, like: what's the total, when is it due, who is this letter from, which dishes are vegetarian.
+
+- Press Ask a question at the bottom right of any screen. It asks about the document that's showing, or else the one you scanned most recently.
+- Type your question in the Your question box and press Ask, or press Say your question and speak it.
+- You'll hear "Looking." Then you hear the answer, followed by "The document says:" and the exact words from the page that back it up. Both are also shown on screen.
+- Ask follow-up questions, like "and when is it due?". It remembers your last couple of questions.
+- Press Stop to stop an answer. Navigate up, or any tab, closes Ask a question.
+
+### Every answer is checked
+
+The AI must give the exact words from the document that support its answer. BlindScan checks that those words, and every number in the answer, really are in the scanned text. If they aren't, you hear "I couldn't find that in the document, so I won't guess", instead of something the AI may have made up. If the document doesn't hold the answer, you hear "The document doesn't say."
+
+The check can't fix a word the camera misread. If the scan says 84 but the paper says 64, the answer says 84 too. For anything important, like an amount due or a medicine dose, scan again or check another way.
+
+### Which AI answers
+
+- Phones with Google's built-in AI, Gemini Nano, answer on the phone. It's free and private: nothing leaves the phone. Recent Pixel phones, Samsung Galaxy S phones and others have it. The first time, Android may need to fetch it; press Get the built-in AI.
+- If your phone doesn't have it, or you want the most accurate answers, you can use a cloud AI with your own key: Anthropic Claude or Google Gemini. The document's text and your question are then sent to that company, and you pay them for what you use. Set it up in Settings, Ask a question.
+
 ## How BlindScan reads a page
 
 - Pages with two or more columns are read one column at a time, top to bottom, left to right.
@@ -218,6 +243,11 @@ All of these are on to start with, except Scan automatically when ready.
 - Tilt prompts (for pages lying flat). Turn this off if you scan things that aren't lying flat, like a sign on a wall.
 - Scan automatically when ready.
 
+### Ask a question
+
+- Answers come from: Automatic (the phone's built-in AI, or the cloud AI when the phone has none, if you set it up), Phone's built-in AI only, or Cloud AI only.
+- Use a cloud AI: off to start with. When you turn it on, choose Anthropic Claude or Google Gemini, paste your API key in the box, and press Save key. The key is kept only on this phone. Remove key deletes it.
+
 ### Problems
 
 This group only appears after BlindScan has closed unexpectedly. Share crash report sends the details to the developer through any app you choose, such as email.
@@ -251,7 +281,7 @@ BlindScan works on Android 8 and newer.
 
 ## Privacy
 
-BlindScan has no internet permission, so it cannot send anything anywhere by itself. Pictures are kept only in the app's private storage and are tidied away when you clear a scan. Text, photos and reports leave your phone only when you choose Share, Save, or Share scan for testing yourself.
+BlindScan only uses the internet for the optional cloud AI in Ask a question, which is off until you set it up with your own key. When it's on and you ask a question, the text of that document and your question are sent to the company you chose; nothing else is sent, and pictures never are. Pictures are kept only in the app's private storage and are tidied away when you clear a scan. Text, photos and reports leave your phone only when you choose Share, Save, or Share scan for testing yourself.
 
 ## Licence
 

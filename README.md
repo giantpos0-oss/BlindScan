@@ -1,7 +1,8 @@
 # BlindScan
 
 A free Android document scanner and live text reader, made by a blind person for blind people.
-Everything runs on the phone. The app has **no internet permission at all**, so nothing you scan can ever leave the device.
+Everything runs on the phone. Nothing you scan leaves the device, unless you choose to turn on the optional cloud AI for Ask a question
+(off by default, with your own key). Otherwise questions are answered by the phone's built-in AI.
 
 ## User guide and release notes
 
@@ -111,4 +112,4 @@ BlindScan is free software: you can redistribute it and/or modify it under the t
 General Public License, version 3 or (at your option) any later version. See `LICENSE`.
 Copyright (C) 2026 Will Walsh. Anything built from BlindScan must stay free and open under the same licence.
 
-Parts made by others keep their own licences, all compatible with the GPL: English word list: SymSpell frequency dictionary (MIT), see `WORDLIST-LICENSE.txt`. OCR models: PaddleOCR (Apache 2.0), ONNX conversions from the OnnxOCR project (Apache 2.0); see `MODELS-LICENSE.txt`. ONNX Runtime: MIT.
+Parts made by others keep their own licences, all compatible with the GPL: English word list: SymSpell frequency dictionary (MIT), see `WORDLIST-LICENSE.txt`. OCR models: PaddleOCR (Apache 2.0), ONNX conversions from the OnnxOCR project (Apache 2.0); see `MODELS-LICENSE.txt`. ONNX Runtime: MIT. ML Kit GenAI: Google's terms.

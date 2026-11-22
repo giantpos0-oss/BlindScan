@@ -2,6 +2,14 @@
 
 The newest version is at the top. Each version has its own heading, so you can jump between them with your screen reader's heading navigation.
 
+## Version 0.3.0
+
+- New: Ask a question. Once you've scanned something, an Ask a question button sits at the bottom right of every screen. Type or say your question about the document.
+- New: Scan and ask a question, on the Scan document screen. It positions and takes the picture as usual, then goes straight to your question instead of reading the page aloud.
+- Every answer is checked against the page: you hear the exact words it's based on, and if they can't be found in the scanned text you hear that, instead of a guess.
+- Answers come from the phone's built-in AI where the phone has it, free and private. Optionally, turn on a cloud AI, Anthropic Claude or Google Gemini, with your own key, in Settings, Ask a question.
+- BlindScan now has internet permission, used only by that optional cloud AI.
+
 ## Version 0.2.13
 
 - New: a full user guide. It's on the Help tab, and the Open user guide in browser button at the very top opens it in Chrome or your usual browser.

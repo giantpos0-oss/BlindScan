@@ -238,6 +238,7 @@ private fun ScanCamera(onUp: () -> Unit) {
     fun scanSingle(photo: Bitmap, lightOff: Bitmap?) {
         val doc = DocumentStore.startPage(null)
         val docId = doc.id
+        if (AskState.afterScan) say("Reading the page for your question.")
         readInBackground(app, context, photo,
             onProgress = { paras -> DocumentStore.updateLastPage(docId) { it.copy(paragraphs = paras) } },
             onDone = { page ->
@@ -253,7 +254,10 @@ private fun ScanCamera(onUp: () -> Unit) {
                     }
                 } else {
                     DocumentStore.updateLastPage(docId) { page.copy(key = it.key) }
+                    // Scan and ask: the page is read, so go straight to the question.
+                    if (AskState.afterScan) { AskState.afterScan = false; reader.stopSpeaking(); AskState.open = true }
                 }
+                if (page.paragraphs.isEmpty()) AskState.afterScan = false
                 ScanPhotos.tidy(context)
             },
             lightOffPhoto = lightOff,
@@ -379,6 +383,19 @@ private fun ScanCamera(onUp: () -> Unit) {
             },
             onClick = { scan() }, enabled = !busy,
         )
+        // Scan and ask: the same positioning help and capture (automatic or this button), then
+        // straight to Ask a question instead of reading the page aloud.
+        if (!settings.batchMode && DocumentStore.addingTo == null) {
+            BigButton(
+                if (AskState.afterScan && settings.autoScan) "Scan and ask: waiting for the page" else "Scan and ask a question",
+                onClick = {
+                    AskState.afterScan = true
+                    if (settings.autoScan) say("Scan and ask. Hold the phone over the page; it scans when the page is in view.")
+                    else scan()
+                },
+                enabled = !busy,
+            )
+        }
         if (batch.isNotEmpty()) {
             BigButton(
                 "Read ${batch.size} ${if (batch.size == 1) "page" else "pages"}",
