@@ -99,4 +99,8 @@ tools/ocr-testbench/     Python reference pipeline + hard test-page generator
 
 ## Licences
 
-App code: yours. English word list: SymSpell frequency dictionary (MIT), see `WORDLIST-LICENSE.txt`. OCR models: PaddleOCR (Apache 2.0), ONNX conversions from the OnnxOCR project (Apache 2.0); see `MODELS-LICENSE.txt`. ONNX Runtime: MIT.
+BlindScan is free software: you can redistribute it and/or modify it under the terms of the GNU
+General Public License, version 3 or (at your option) any later version. See `LICENSE`.
+Copyright (C) 2026 Will Walsh. Anything built from BlindScan must stay free and open under the same licence.
+
+Parts made by others keep their own licences, all compatible with the GPL: English word list: SymSpell frequency dictionary (MIT), see `WORDLIST-LICENSE.txt`. OCR models: PaddleOCR (Apache 2.0), ONNX conversions from the OnnxOCR project (Apache 2.0); see `MODELS-LICENSE.txt`. ONNX Runtime: MIT.
