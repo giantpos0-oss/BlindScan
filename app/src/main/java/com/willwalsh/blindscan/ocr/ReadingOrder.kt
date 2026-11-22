@@ -384,10 +384,28 @@ object ReadingOrder {
             // Headings: a short block in clearly bigger type than the page's text, or a one- or two-line
             // title sitting right over its text (a year over a timeline entry, "Mains" on a menu).
             val big = hMed / typicalH
+            // Big type only counts as a heading when text follows right below it. A big caption under a
+            // photo has nothing of the page's text close below it (or only the photo's small print).
+            val headsText = blocks.any { o ->
+                o !== blk && o !in scraps && o.top > blk.bottom - 0.5f * hMed && o.top - blk.bottom < 3f * hMed &&
+                    min(o.right, blk.right) - max(o.left, blk.left) > 0
+            }
+            // A caption under a photo: a tall stretch of nothing right above it (the photo), while the
+            // page does have text higher up beside it. (Words in the photo itself, like a sign, don't count.) A headline at the top of the page has nothing
+            // higher up; a section heading has text close above it.
+            val emptyAbove = 6f * hMed
+            val textCloseAbove = blocks.any { o ->
+                o !== blk && o !in scraps && o.bottom < blk.top + 0.5f * hMed && blk.top - o.bottom < emptyAbove &&
+                    min(o.right, blk.right) - max(o.left, blk.left) > 0
+            }
+            val textHigherUp = blocks.any { o -> o !== blk && o !in scraps && o.top < blk.top - emptyAbove }
+            val underPhoto = !textCloseAbove && textHigherUp
             val headingHint = when {
                 blk in scraps -> 0
-                sorted.size <= 3 && big >= 2.2f -> 1
-                sorted.size <= 3 && big >= 1.25f -> 2
+                // (A title wider than the text it sits on is a caption over the photo's small print.)
+                underPhoto && titleOf[blk].let { t -> t == null || blk.right - blk.left > 1.3f * (t.right - t.left) } -> 0
+                sorted.size <= 3 && big >= 2.2f && headsText -> 1
+                sorted.size <= 3 && big >= 1.25f && headsText -> 2
                 titleOf.containsKey(blk) -> 2
                 else -> 0
             }
