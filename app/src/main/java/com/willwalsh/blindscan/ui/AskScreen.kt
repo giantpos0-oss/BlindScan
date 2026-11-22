@@ -44,11 +44,9 @@ import com.willwalsh.blindscan.Voice
 import com.willwalsh.blindscan.LocalSettings
 import com.willwalsh.blindscan.ai.AskEngine
 import com.willwalsh.blindscan.ai.AskStatus
-import com.willwalsh.blindscan.ai.OwnModel
 import com.willwalsh.blindscan.ai.Turn
 import com.willwalsh.blindscan.speech.Announcer
 import com.willwalsh.blindscan.speech.Reader
-import com.willwalsh.blindscan.speech.StreamChunker
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -65,8 +63,8 @@ object AskState {
 /** One question and its answer as shown on screen. */
 private class QA(val question: String) {
     var answer by mutableStateOf("")
+    var quote by mutableStateOf("")
     var thinking by mutableStateOf(true)
-    var failed by mutableStateOf(false)
 }
 
 /**
@@ -89,21 +87,14 @@ fun AskScreen(doc: ScannedDocument, reader: Reader, announcer: Announcer, onClos
     val shown = remember(doc.id) { mutableStateListOf<QA>().also { l -> AskState.turns.forEach { t -> l.add(QA(t.question).also { it.answer = t.answer; it.thinking = false }) } } }
 
     var status by remember { mutableStateOf<AskStatus?>(null) }
-    var preparing by remember { mutableStateOf("") }
     var question by remember { mutableStateOf("") }
     var job by remember { mutableStateOf<Job?>(null) }
     val focus = remember { FocusRequester() }
     val listState = rememberLazyListState()
 
-    LaunchedEffect(settings.askEngine) {
-        status = AskEngine.status(context, settings.askEngine)
-        if (OwnModel.isDownloading(context)) {
-            preparing = "Downloading BlindScan's question model."
-            if (OwnModel.await(context) { p -> preparing = "Downloading BlindScan's question model: ${(p.fraction * 100).toInt()} percent." })
-                status = AskEngine.status(context, settings.askEngine)
-            preparing = ""
-        }
-        if (status == AskStatus.BuiltInReady || status == AskStatus.OwnReady) {
+    LaunchedEffect(settings.askEngine, settings.cloudOn, settings.cloudKey, settings.cloudProvider) {
+        status = AskEngine.status(settings)
+        if (status == AskStatus.BuiltInReady || status is AskStatus.CloudReady) {
             say("Ask a question about the document.")
             runCatching { focus.requestFocus() }
         }
@@ -117,36 +108,29 @@ fun AskScreen(doc: ScannedDocument, reader: Reader, announcer: Announcer, onClos
         val qa = QA(text)
         shown.add(qa)
         reader.stopSpeaking()
-        say("Thinking.")
-        val chunker = StreamChunker()
-        val ttsStream = !(useScreenReader && announcer.screenReaderOn)
-        if (ttsStream) reader.startStream(autoPlay = true)
+        say("Looking.")
         job = scope.launch {
-            val sb = StringBuilder()
             try {
-                AskEngine.answer(context, st, doc.text, AskState.turns.toList(), text).collect { piece ->
-                    sb.append(piece)
-                    qa.thinking = false
-                    qa.answer = AskEngine.clean(sb.toString())
-                    val ready = chunker.take(qa.answer, done = false)
-                    if (ready.isNotEmpty()) {
-                        if (ttsStream) reader.appendStream(ready) else say(ready.joinToString(" "))
-                    }
-                }
+                val a = AskEngine.answer(settings, st, doc.text, AskState.turns.toList(), text)
+                qa.answer = a.text
+                qa.quote = a.quote
                 qa.thinking = false
-                qa.answer = AskEngine.clean(sb.toString()).ifBlank { "No answer came back. Try asking another way." }
-                val rest = chunker.take(qa.answer, done = true)
-                if (ttsStream) { reader.appendStream(rest); reader.endStream() } else if (rest.isNotEmpty()) say(rest.joinToString(" "))
-                AskState.turns.add(Turn(text, qa.answer))
+                // The answer, then the document's own words that back it up.
+                say(if (a.quote.isNotEmpty()) "${a.text} The document says: ${a.quote}" else a.text)
+                if (!a.notFound) AskState.turns.add(Turn(text, a.text))
             } catch (t: Throwable) {
                 if (t is kotlinx.coroutines.CancellationException) throw t
-                qa.thinking = false; qa.failed = true
-                qa.answer = "Sorry, the AI couldn't answer that. " + when {
-                    t.message?.contains("BUSY", true) == true -> "It's busy; try again in a moment."
+                qa.thinking = false
+                qa.answer = "Sorry, I couldn't get an answer. " + when {
+                    t is AskEngine.CloudError && (t.code == 401 || t.code == 403) ->
+                        "The cloud AI didn't accept your key. Check it in Settings, Ask a question."
+                    t is AskEngine.CloudError && t.code == 429 -> "The cloud AI says too many questions or no credit left. Try again later."
+                    t is AskEngine.CloudError && t.code == 404 -> "The cloud AI model wasn't found; BlindScan may need an update."
+                    t is java.io.IOException -> "There's no internet connection for the cloud AI."
+                    t.message?.contains("BUSY", true) == true -> "The AI is busy; try again in a moment."
                     t.message?.contains("BACKGROUND", true) == true -> "Keep BlindScan open while it answers."
                     else -> "Please try again."
                 }
-                if (ttsStream) reader.endStream()
                 say(qa.answer)
             }
         }
@@ -171,46 +155,33 @@ fun AskScreen(doc: ScannedDocument, reader: Reader, announcer: Announcer, onClos
         val st = status
         when {
             st == null -> Row(Modifier.padding(16.dp)) { CircularProgressIndicator(); Text("  Getting the AI ready.", fontSize = 20.sp) }
-            preparing.isNotEmpty() -> Text(preparing, fontSize = 20.sp, modifier = Modifier.padding(16.dp))
             st == AskStatus.BuiltInDownloadable || st == AskStatus.BuiltInDownloading -> {
                 Text(
                     "This phone has Google's built-in AI, Gemini Nano, but Android hasn't fetched it yet. " +
-                        "It's free and stays on the phone. Android downloads it, not BlindScan.",
+                        "It's free and private: questions and documents stay on the phone. Android downloads it, not BlindScan.",
                     fontSize = 20.sp, modifier = Modifier.padding(16.dp),
                 )
-                BigButton("Get the built-in AI", enabled = st == AskStatus.BuiltInDownloadable, onClick = {
+                BigButton(if (st == AskStatus.BuiltInDownloading) "Getting the built-in AI…" else "Get the built-in AI",
+                    enabled = st == AskStatus.BuiltInDownloadable, onClick = {
                     status = AskStatus.BuiltInDownloading
                     say("Getting the built-in AI. This can take a few minutes.")
                     scope.launch {
-                        val ok = AskEngine.downloadBuiltIn { }
-                        status = AskEngine.status(context, settings.askEngine)
+                        val ok = AskEngine.downloadBuiltIn()
+                        status = AskEngine.status(settings)
                         say(if (ok) "The built-in AI is ready. Ask your question." else "Couldn't get the built-in AI. Check the internet connection and try again.")
                     }
                 })
             }
-            st == AskStatus.OwnDownloadable -> {
+            st is AskStatus.NoneAvailable -> {
                 Text(
-                    "To answer questions, BlindScan needs its own AI model on this phone: about 1.6 gigabytes, " +
-                        "downloaded once. After that it works without internet and nothing you scan leaves the phone." +
-                        if (settings.askWifiOnly) " It downloads over Wi-Fi only (you can change that in Settings, Ask a question)." else "",
+                    if (settings.askEngine == com.willwalsh.blindscan.AskEngineChoice.CLOUD)
+                        "You chose the cloud AI, but it isn't set up yet. In Settings, Ask a question, turn on the " +
+                            "cloud AI, choose a service and enter your key."
+                    else "This phone doesn't have Google's built-in AI. You can use a cloud AI instead with your own " +
+                        "key: in Settings, Ask a question, turn on the cloud AI. The document's text is then sent to " +
+                        "the company you choose to answer your questions.",
                     fontSize = 20.sp, modifier = Modifier.padding(16.dp),
                 )
-                BigButton("Download the question model", onClick = {
-                    OwnModel.start(context, settings.askWifiOnly)
-                    say("Downloading. You can leave BlindScan; the download carries on.")
-                    scope.launch {
-                        var lastSaid = -1
-                        val ok = OwnModel.await(context) { p ->
-                            val pct = (p.fraction * 100).toInt()
-                            preparing = if (p.waitingForWifi) "Waiting for Wi-Fi to download the question model."
-                            else "Downloading the question model: $pct percent."
-                            if (pct / 10 != lastSaid && pct > 0) { lastSaid = pct / 10; say("$pct percent.") }
-                        }
-                        preparing = ""
-                        status = AskEngine.status(context, settings.askEngine)
-                        say(if (ok) "The question model is ready. Ask your question." else "The download didn't finish. Try again.")
-                    }
-                })
             }
             else -> {
                 LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp), state = listState) {
@@ -218,8 +189,12 @@ fun AskScreen(doc: ScannedDocument, reader: Reader, announcer: Announcer, onClos
                         Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                             Text("You asked: ${qa.question}", fontSize = 20.sp, fontWeight = FontWeight.Bold,
                                 modifier = Modifier.semantics { heading() })
-                            if (qa.thinking) Text("Thinking…", fontSize = 20.sp)
-                            else Text(qa.answer, fontSize = 20.sp)
+                            if (qa.thinking) Text("Looking…", fontSize = 20.sp)
+                            else {
+                                Text(qa.answer, fontSize = 20.sp)
+                                if (qa.quote.isNotEmpty()) Text("The document says: “${qa.quote}”", fontSize = 18.sp,
+                                    modifier = Modifier.padding(top = 4.dp))
+                            }
                         }
                     }
                 }
@@ -237,8 +212,9 @@ fun AskScreen(doc: ScannedDocument, reader: Reader, announcer: Announcer, onClos
                     if (job?.isActive == true) SmallButton("Stop", onClick = { job?.cancel(); reader.stopSpeaking(); say("Stopped.") })
                 }
                 Text(
-                    if (st == AskStatus.BuiltInReady) "Answers by the phone's built-in AI. AI can make mistakes; check anything important."
-                    else "Answers by BlindScan's own AI. AI can make mistakes; check anything important.",
+                    (if (st is AskStatus.CloudReady) "Answers by ${st.provider.label}, in the cloud. "
+                    else "Answers by the phone's built-in AI, on the phone. ") +
+                        "Each answer is checked against the page; anything that can't be found there isn't given.",
                     fontSize = 16.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 )
             }

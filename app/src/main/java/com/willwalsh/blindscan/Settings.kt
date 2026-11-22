@@ -12,9 +12,15 @@ enum class Voice { SCREEN_READER, TEXT_TO_SPEECH }
 
 /** Which AI answers questions about a document. */
 enum class AskEngineChoice(val label: String) {
-    AUTOMATIC("Automatic: the phone's built-in AI if it has one, otherwise BlindScan's own"),
-    BUILT_IN("Phone's built-in AI only (Gemini Nano)"),
-    BLINDSCAN("BlindScan's own downloaded AI only"),
+    AUTOMATIC("Automatic: the phone's built-in AI, or the cloud AI when the phone has none (if you set it up)"),
+    BUILT_IN("Phone's built-in AI only (Gemini Nano). Private: nothing leaves the phone"),
+    CLOUD("Cloud AI only (most accurate). The document's text is sent to the company you choose"),
+}
+
+/** Cloud AI services you can use with your own key. */
+enum class CloudProvider(val label: String) {
+    CLAUDE("Anthropic Claude"),
+    GEMINI("Google Gemini"),
 }
 
 /** All user settings, saved instantly. Compose screens read these directly. */
@@ -97,11 +103,24 @@ class Settings(context: Context) {
         get() = _askEngine
         set(v) { _askEngine = v; prefs.edit { putString("askEngine", v.name) } }
 
-    private val _askWifiOnly = bool("askWifiOnly", true)
-    /** Download BlindScan's own AI only over Wi-Fi (it's about 1.6 GB). */
-    var askWifiOnly: Boolean
-        get() = _askWifiOnly.value
-        set(v) { _askWifiOnly.value = v; save("askWifiOnly", v) }
+    private val _cloudOn = bool("cloudOn", false)
+    /** Off until you turn it on: questions may be answered by a cloud AI with your own key. */
+    var cloudOn: Boolean
+        get() = _cloudOn.value
+        set(v) { _cloudOn.value = v; save("cloudOn", v) }
+
+    private var _cloudProvider by mutableStateOf(
+        runCatching { CloudProvider.valueOf(prefs.getString("cloudProvider", CloudProvider.CLAUDE.name)!!) }.getOrDefault(CloudProvider.CLAUDE)
+    )
+    var cloudProvider: CloudProvider
+        get() = _cloudProvider
+        set(v) { _cloudProvider = v; prefs.edit { putString("cloudProvider", v.name) } }
+
+    private var _cloudKey by mutableStateOf(prefs.getString("cloudKey", "") ?: "")
+    /** Your API key for the chosen cloud AI (kept only in BlindScan's private storage on this phone). */
+    var cloudKey: String
+        get() = _cloudKey
+        set(v) { _cloudKey = v.trim(); prefs.edit { putString("cloudKey", v.trim()) } }
 
     /** Set by the app so engines can be rebuilt when an engine setting changes. */
     var onEngineSettingChanged: (() -> Unit)? = null

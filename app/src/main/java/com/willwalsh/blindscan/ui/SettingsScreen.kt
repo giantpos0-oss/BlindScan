@@ -118,12 +118,44 @@ fun SettingsScreen(onUp: () -> Unit) {
                         }
                     }
                 }
-                Toggle("Download BlindScan's own AI over Wi-Fi only (about 1.6 GB)", s.askWifiOnly) { s.askWifiOnly = it }
-                var hasModel by androidx.compose.runtime.remember { mutableStateOf(com.willwalsh.blindscan.ai.OwnModel.isReady(context) || com.willwalsh.blindscan.ai.OwnModel.isDownloading(context)) }
-                if (hasModel) {
-                    BigButton("Delete BlindScan's own AI (frees about 1.6 GB)", onClick = {
-                        com.willwalsh.blindscan.ai.OwnModel.delete(context); hasModel = false
+                Section("Cloud AI (optional)")
+                Text(
+                    "Off until you turn it on. When it's used, the document's text and your question are sent to " +
+                        "the company you choose, using your own key; you pay them for what you use. Each answer is " +
+                        "still checked against the page.",
+                    fontSize = 18.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+                Toggle("Use a cloud AI", s.cloudOn) { s.cloudOn = it }
+                if (s.cloudOn) {
+                    Column(Modifier.selectableGroup()) {
+                        for (p in com.willwalsh.blindscan.CloudProvider.entries) {
+                            Row(
+                                Modifier.fillMaxWidth().heightIn(min = 56.dp)
+                                    .selectable(selected = s.cloudProvider == p, role = Role.RadioButton, onClick = { s.cloudProvider = p })
+                                    .padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                RadioButton(selected = s.cloudProvider == p, onClick = null)
+                                Text(p.label, fontSize = 19.sp, modifier = Modifier.padding(start = 12.dp))
+                            }
+                        }
+                    }
+                    var key by androidx.compose.runtime.remember { mutableStateOf(s.cloudKey) }
+                    androidx.compose.material3.OutlinedTextField(
+                        value = key, onValueChange = { key = it },
+                        label = { Text("Your ${s.cloudProvider.label} API key", fontSize = 18.sp) },
+                        singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                    BigButton(if (s.cloudKey.isBlank()) "Save key" else "Replace key", enabled = key.isNotBlank(), onClick = {
+                        s.cloudKey = key
                     })
+                    if (s.cloudKey.isNotBlank()) BigButton("Remove key", onClick = { s.cloudKey = ""; key = "" })
+                    Text(
+                        if (s.cloudKey.isBlank()) "No key saved yet." else "A key is saved on this phone only.",
+                        fontSize = 18.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
                 }
             }
             SettingsPage.PROBLEMS -> {

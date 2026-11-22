@@ -74,10 +74,16 @@ private val HELP = listOf(
         "Scan and ask a question, on the Scan document screen, gives the same positioning help and takes the " +
             "picture the same way (automatically or with the button, as set), then goes straight to the " +
             "question instead of reading the page aloud.",
-        "The AI runs on the phone; nothing you scan is sent anywhere. Phones with Google's built-in AI " +
-            "(Gemini Nano, on recent Pixel, Samsung Galaxy S and other phones) use it. Other phones download " +
-            "BlindScan's own AI once, about 1.6 gigabytes. Choose which in Settings, Ask a question.",
-        "AI can misread or make mistakes. Check anything important, like amounts due or medicine doses.",
+        "Every answer is checked against the page. The AI must give the exact words from the document that " +
+            "back up its answer, and you hear them after the answer: The document says, then those words. " +
+            "BlindScan makes sure those words, and every number in the answer, really are in the scanned text. " +
+            "If they aren't, you hear that it couldn't be found in the document, instead of a guess.",
+        "Phones with Google's built-in AI (Gemini Nano, on recent Pixel, Samsung Galaxy S and other phones) " +
+            "answer on the phone: free and private. If your phone doesn't have it, or you want the most accurate " +
+            "answers, you can turn on a cloud AI (Anthropic Claude or Google Gemini) with your own key in Settings, " +
+            "Ask a question. Then the document's text is sent to that company to answer.",
+        "The check can't fix a word the camera misread: if the scan says 84 but the paper says 64, the answer " +
+            "will say 84 too. For anything important, like an amount due or a medicine dose, scan again or check.",
     ),
     "Headings" to listOf(
         "Headlines in big type, and titles printed right over their text (such as a year on a timeline or " +

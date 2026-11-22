@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- All reading and all answers happen on the phone; nothing you scan is ever sent anywhere.
-         Internet is used for one thing only: downloading BlindScan's own question-answering model
-         (about 1.6 GB), once, when you choose to. -->
+    <!-- All reading happens on the phone. Internet is used for one thing only: the optional cloud AI
+         for Ask a question, which is off until you set it up with your own key. With it off, nothing
+         you scan ever leaves the phone. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -24,9 +24,6 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.BlindScan">
-        <!-- Lets BlindScan's own question model use the phone's graphics chip, where there is one. -->
-        <uses-native-library android:name="libOpenCL.so" android:required="false" />
-        <uses-native-library android:name="libvndksupport.so" android:required="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

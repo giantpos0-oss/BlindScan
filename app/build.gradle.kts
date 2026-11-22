@@ -72,8 +72,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
 
-    // Ask a question: the phone's built-in AI (Gemini Nano through Android's AICore)...
+    // Ask a question: the phone's built-in AI (Gemini Nano through Android's AICore).
     implementation("com.google.mlkit:genai-prompt:1.0.0-beta5")
-    // ...and BlindScan's own downloadable model, run on the phone.
-    implementation("com.google.ai.edge.litertlm:litertlm-android:0.19.1")
+
 }
