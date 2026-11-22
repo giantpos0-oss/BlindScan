@@ -47,6 +47,8 @@ object ReadingOrder {
         val blockLongLines: Boolean = false,
         /** A scrap (a picture label, a page number): its lines are read as one phrase. */
         val scrap: Boolean = false,
+        /** A possible heading: 1 for big type (a headline), 2 for a smaller title over its text, 0 for neither. */
+        val headingHint: Int = 0,
     ) {
         val width: Float get() = right - left
         val blockWidth: Float get() = blockRight - blockLeft
@@ -379,10 +381,20 @@ object ReadingOrder {
             val rightAligned = sorted.size >= 2 &&
                 sorted.maxOf { it.right } - sorted.minOf { it.right } < 0.5f * hMed &&
                 sorted.maxOf { it.left } - sorted.minOf { it.left } > 1.5f * hMed
+            // Headings: a short block in clearly bigger type than the page's text, or a one- or two-line
+            // title sitting right over its text (a year over a timeline entry, "Mains" on a menu).
+            val big = hMed / typicalH
+            val headingHint = when {
+                blk in scraps -> 0
+                sorted.size <= 3 && big >= 2.2f -> 1
+                sorted.size <= 3 && big >= 1.25f -> 2
+                titleOf.containsKey(blk) -> 2
+                else -> 0
+            }
             for (ln in sorted) {
                 val lineItems = ln.items.sortedBy { if (it == ln.dropCap) -Float.MAX_VALUE else us[it] }
                 rows.add(Row(ln.ownV, ln.h, ln.left, ln.right, lineItems, bi, blk.left, blk.right, ln.dropCap, ln.tableRow,
-                    pitch, sorted.size, fullShare, rightAligned, longLines, blk in scraps))
+                    pitch, sorted.size, fullShare, rightAligned, longLines, blk in scraps, headingHint))
             }
         }
         return Layout(rows, typicalH, tilt)
@@ -407,8 +419,15 @@ object ReadingOrder {
      * A word broken across lines with a hyphen is mended when the joined word is a real word
      * ("pack- age" -> "package"); a real hyphen is kept ("state- of-the-art" -> "state-of-the-art").
      */
-    fun paragraphs(layout: Layout, rowTexts: List<String>, isWord: (String) -> Boolean = { false }): List<String> {
-        val paragraphs = ArrayList<String>()
+    fun paragraphs(layout: Layout, rowTexts: List<String>, isWord: (String) -> Boolean = { false }): List<String> =
+        structured(layout, rowTexts, isWord).map { it.text }
+
+    /** A paragraph and its heading level: 0 for ordinary text, 1 for a main heading, 2 for a subheading. */
+    class Para(val text: String, val heading: Int)
+
+    /** [paragraphs], each marked as a heading or not, for saving with real headings (and heading navigation). */
+    fun structured(layout: Layout, rowTexts: List<String>, isWord: (String) -> Boolean = { false }): List<Para> {
+        val paragraphs = ArrayList<Para>()
         val cur = ArrayList<Int>()
         fun flush() {
             if (cur.isEmpty()) return
@@ -425,8 +444,13 @@ object ReadingOrder {
                 } else sb.append(' ').append(t)
             }
             val t = sb.toString()
+            // A heading is short, has no full stop at the end, and every line of it was marked as one.
+            val hint = cur.maxOf { layout.rows[it].headingHint }
+            val words = t.split(' ').count { it.isNotBlank() }
+            val level = if (hint > 0 && cur.all { layout.rows[it].headingHint > 0 } && words in 1..14 &&
+                !t.trimEnd().endsWith(".") && t.any { it.isLetterOrDigit() }) cur.minOf { layout.rows[it].headingHint } else 0
             // A lone letter or symbol on its own is almost always a speck or a picture detail.
-            if (!(t.length == 1 && !t[0].isDigit())) paragraphs.add(t)
+            if (!(t.length == 1 && !t[0].isDigit())) paragraphs.add(Para(t, level))
             cur.clear()
         }
 

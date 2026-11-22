@@ -104,8 +104,8 @@ fun importFiles(app: BlindScanApp, context: Context, uris: List<Uri>, say: (Stri
             })
             withContext(Dispatchers.Main) {
                 DocumentStore.updatePage(doc.id, i) {
-                    val paras = page.paragraphs.ifEmpty { listOf("No text found on this page.") }
-                    page.copy(key = it.key, paragraphs = paras, reading = false)
+                    if (page.paragraphs.isEmpty()) page.copy(key = it.key, paragraphs = listOf("No text found on this page."), headings = emptyList(), reading = false)
+                    else page.copy(key = it.key, reading = false)
                 }
             }
         }

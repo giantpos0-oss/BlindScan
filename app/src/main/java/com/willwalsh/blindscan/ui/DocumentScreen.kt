@@ -222,11 +222,14 @@ fun DocumentScreen(doc: ScannedDocument, onClose: () -> Unit) {
                 }
                 page.paragraphs.forEachIndexed { i, para ->
                     item(key = "p${page.key}-$i") {
+                        // Headings found on the page are real headings: the screen reader can jump between them.
+                        val level = page.headingOf(i)
                         Text(
                             para,
-                            fontSize = 20.sp,
+                            fontSize = if (level == 1) 24.sp else if (level == 2) 22.sp else 20.sp,
+                            fontWeight = if (level > 0) FontWeight.Bold else null,
                             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
-                                .semantics { customActions = a11yActions },
+                                .semantics { customActions = a11yActions; if (level > 0) heading() },
                         )
                     }
                 }

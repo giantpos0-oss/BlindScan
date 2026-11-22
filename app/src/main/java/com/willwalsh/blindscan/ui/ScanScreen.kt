@@ -180,6 +180,7 @@ internal suspend fun readPage(
             app.markScanFinished()
             val page = ScannedPage(
                 paragraphs = result?.paragraphs ?: emptyList(),
+                headings = result?.headings ?: emptyList(),
                 photo = file,
                 altPhoto = altFile,
                 reading = false,

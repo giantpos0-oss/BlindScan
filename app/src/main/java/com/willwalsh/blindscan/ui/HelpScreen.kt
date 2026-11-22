@@ -29,7 +29,7 @@ private val HELP = listOf(
             "Fast forward skips ahead one sentence. Using any of them pauses live reading, so new text doesn't " +
             "interrupt you while you go back over something. Press Resume live reading to carry on.",
         "Light on turns on the phone's flashlight. In dim places the light comes on by itself (you can turn " +
-            "that off in Settings).",
+            "that off in Settings, Camera and positioning).",
     ),
     "Scan document" to listOf(
         "Use this for letters, bills, menus, labels and pages of a book. Lay the page on a table, hold the " +
@@ -40,7 +40,7 @@ private val HELP = listOf(
             "whether any text runs off an edge, whether the page's edges are visible, and the lighting.",
         "Open last document brings back your most recent scan.",
         "To keep a document, choose Save to device as from Document actions, then pick a format: plain text, " +
-            "Word (DOCX), PDF, web page (HTML), Markdown, or e-book (EPUB). Pages become headings in every format.",
+            "Word (DOCX), PDF, web page (HTML), Markdown, or e-book (EPUB). Headings are kept (see Headings).",
         "Import image or PDF reads pictures and scanned PDF files already on your phone: choose one or " +
             "several files. Every page of a PDF is read, one after another, into one document. You can also " +
             "share a picture or PDF to BlindScan from another app, such as Files, Photos or your email.",
@@ -54,7 +54,8 @@ private val HELP = listOf(
         "If pressing the button tips the phone or knocks the page out of view, BlindScan tells you how to " +
             "fix it and takes the picture once you've settled again.",
         "Glossy paper can reflect the phone's light and wash out words. Whenever the light is on during a " +
-            "scan, BlindScan also takes a picture with the light off, reads both, and keeps the better one. " +
+            "scan, BlindScan also takes a picture with the light off, quickly checks which picture shows more " +
+            "text, and reads that one. " +
             "If words still go missing on a shiny page, tilt the page slightly away from overhead lights.",
         "Positioning prompts come one movement at a time. After each one there's time to move before the next.",
     ),
@@ -62,11 +63,22 @@ private val HELP = listOf(
         "Pages with two or more columns are read one column at a time, top to bottom, left to right. " +
             "Headlines come first. Labels on pictures, captions and page numbers are read after the main text, " +
             "so they don't interrupt it. A big decorative first letter is joined back onto its word.",
+        "A title printed over a short piece of text, like each year on a timeline, is read just before that text.",
+    ),
+    "Headings" to listOf(
+        "Headlines in big type, and titles printed right over their text (such as a year on a timeline or " +
+            "Mains on a menu), become headings. On the document screen they are real headings, so you can " +
+            "jump between them with your screen reader's heading navigation.",
+        "When you save as Word, PDF, web page, Markdown or e-book, those headings are saved as headings too: " +
+            "the document title is the main heading, then a heading for each page if there are several, then " +
+            "the headings found on the page.",
+        "Bold text that is the same size as the text around it can't be told apart from ordinary text yet, so " +
+            "a small bold subheading may come out as an ordinary paragraph.",
     ),
     "Fast results" to listOf(
         "As soon as you scan, the document opens and the first lines are read out while the rest of the page " +
             "is still being read. With Android text to speech the controls work straight away. With a screen " +
-            "reader, the whole page is announced when it's finished.",
+            "reader, each part is spoken the moment it is recognised, the same moment it appears on screen.",
     ),
     "Several pages" to listOf(
         "Batch scanning: turn on the Batch scanning switch on the Scan document tab. Scan each page in turn; " +
@@ -79,7 +91,7 @@ private val HELP = listOf(
     "Unclear words" to listOf(
         "When a word comes out unclear, BlindScan compares what it saw with similar English words and fixes " +
             "the word only when the evidence is clearly better. Numbers are never changed into other numbers, " +
-            "and words it read confidently, like names, are left alone. You can turn this off in Settings.",
+            "and words it read confidently, like names, are left alone. You can turn this off in Settings, Accuracy and speed.",
     ),
     "What the positioning prompts mean" to listOf(
         "\"Lift the phone up a little\": the text runs off both sides, so move the phone higher above the page.",
@@ -93,16 +105,17 @@ private val HELP = listOf(
     ),
     "Volume buttons" to listOf(
         "While the Scan document tab is showing the camera, either volume button takes the picture, even with " +
-            "TalkBack on. On every other screen the volume buttons work normally. You can turn this off in Settings.",
+            "TalkBack on. On every other screen the volume buttons work normally. You can turn this off in Settings, Accuracy and speed.",
     ),
     "Reading your document" to listOf(
         "When a scan finishes, the text is read straight away: by your screen reader, or by Android text to " +
-            "speech with the DVR controls, whichever you chose in Settings.",
-        "The Document actions button at the top right offers: Read aloud, Save to device, Share text, Copy text, " +
+            "speech with the DVR controls, whichever you chose in Settings, Reading scanned documents.",
+        "The Document actions button at the top right offers: Read aloud, Save to device as, Share text, Copy text, " +
             "Add another page, Share scan for testing, New scan, and Discard.",
         "With TalkBack, every paragraph also has these as actions. Set your reading control to Actions, then " +
             "swipe up or down to pick one and double tap. Or open the TalkBack menu and choose Actions.",
-        "Save to device saves a text file wherever you choose. Share text sends the text to any app, such as email or messages.",
+        "Save to device as asks which kind of file you want: plain text, Word (DOCX), PDF, web page (HTML), " +
+            "Markdown, or e-book (EPUB). Then choose where to save it. Share text sends the text to any app, such as email or messages.",
         "Share scan for testing sends the original photos with a report of what was recognised, how sure the " +
             "app was, and how long it took. It's for sending a tricky scan to the developer so the reading can be improved.",
     ),

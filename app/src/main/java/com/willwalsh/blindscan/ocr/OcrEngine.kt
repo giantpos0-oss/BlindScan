@@ -48,6 +48,8 @@ class OcrEngine(
         val paragraphs: List<String>,
         val detectMs: Long = 0,
         val recognizeMs: Long = 0,
+        /** Heading level of each paragraph: 0 text, 1 main heading, 2 subheading. */
+        val headings: List<Int> = emptyList(),
     ) {
         val text: String get() = paragraphs.joinToString("\n\n")
         val isEmpty: Boolean get() = paragraphs.isEmpty()
@@ -329,7 +331,8 @@ class OcrEngine(
         }
         if (img !== source) img.recycle()
         val total = System.currentTimeMillis() - start
-        return Result(lines, ReadingOrder.paragraphs(layout, rowTexts, ::isKnownWord), detectMs, total - detectMs)
+        val paras = ReadingOrder.structured(layout, rowTexts, ::isKnownWord)
+        return Result(lines, paras.map { it.text }, detectMs, total - detectMs, paras.map { it.heading })
     }
 
     /** The same line box, 15% less tall (the short side). */

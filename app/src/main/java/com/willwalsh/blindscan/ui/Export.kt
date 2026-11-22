@@ -30,11 +30,22 @@ enum class ExportFormat(val label: String, val extension: String, val mime: Stri
  * title, a "Page N" heading per page when there's more than one page, and the paragraphs.
  */
 object Exporter {
-    private class Section(val heading: String?, val paragraphs: List<String>)
+    /** A paragraph and its heading level in the saved file: 0 for text, otherwise 2 to 4 (1 is the title). */
+    private class P(val text: String, val level: Int)
+    private class Section(val heading: String?, val paragraphs: List<P>)
 
-    private fun sections(doc: ScannedDocument): List<Section> =
-        if (doc.pages.size == 1) listOf(Section(null, doc.pages[0].paragraphs))
-        else doc.pages.mapIndexed { i, p -> Section("Page ${i + 1}", p.paragraphs) }
+    /**
+     * Headings found on the page sit under the document title (level 1) and, with several pages,
+     * under each "Page N" heading (level 2).
+     */
+    private fun sections(doc: ScannedDocument): List<Section> {
+        val base = if (doc.pages.size == 1) 1 else 2
+        fun ps(page: ScannedPage) = page.paragraphs.mapIndexed { i, t ->
+            val h = page.headingOf(i); P(t, if (h > 0) base + h else 0)
+        }
+        return if (doc.pages.size == 1) listOf(Section(null, ps(doc.pages[0])))
+        else doc.pages.mapIndexed { i, p -> Section("Page ${i + 1}", ps(p)) }
+    }
 
     fun write(doc: ScannedDocument, title: String, format: ExportFormat, out: OutputStream) {
         val secs = sections(doc)
@@ -58,7 +69,8 @@ object Exporter {
             if (s.heading != null) append("## ").append(s.heading).append("\n\n")
             for (p in s.paragraphs) {
                 // Keep text that happens to look like Markdown (a line starting "# " or "1. ") as text.
-                val safe = p.replace(Regex("^([#>*+-]|\\d+\\.)(\\s)"), "\\\\$1$2")
+                val safe = p.text.replace(Regex("^([#>*+-]|\\d+\\.)(\\s)"), "\\\\$1$2")
+                if (p.level > 0) append("#".repeat(p.level)).append(' ')
                 append(safe).append("\n\n")
             }
         }
@@ -68,9 +80,12 @@ object Exporter {
         append("<h1>").append(esc(title)).append("</h1>\n")
         for (s in secs) {
             if (s.heading != null) append("<h2>").append(esc(s.heading)).append("</h2>\n")
-            for (p in s.paragraphs) append("<p>").append(esc(p)).append("</p>\n")
+            for (p in s.paragraphs) append(htmlPara(p))
         }
     }
+
+    private fun htmlPara(p: P) =
+        if (p.level > 0) "<h${p.level}>${esc(p.text)}</h${p.level}>\n" else "<p>${esc(p.text)}</p>\n"
 
     private fun html(title: String, secs: List<Section>) = """<!DOCTYPE html>
 <html lang="en">
@@ -99,7 +114,7 @@ ${htmlBody(title, secs)}</main>
             append(para(title, "Title"))
             for (s in secs) {
                 if (s.heading != null) append(para(s.heading, "Heading1"))
-                for (p in s.paragraphs) append(para(p))
+                for (p in s.paragraphs) append(if (p.level > 0) para(p.text, "Heading${p.level - 1}") else para(p.text))
             }
         }
         val document = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -107,7 +122,7 @@ ${htmlBody(title, secs)}</main>
         fun heading(id: String, name: String, size: Int, level: Int?) =
             """<w:style w:type="paragraph" w:styleId="$id"><w:name w:val="$name"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="240" w:after="120"/>${if (level != null) "<w:outlineLvl w:val=\"$level\"/>" else ""}</w:pPr><w:rPr><w:b/><w:sz w:val="$size"/></w:rPr></w:style>"""
         val styles = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri" w:eastAsia="Calibri"/><w:sz w:val="24"/><w:lang w:val="en-US"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="160" w:line="276" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>${heading("Title", "Title", 40, null)}${heading("Heading1", "heading 1", 32, 0)}</w:styles>"""
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri" w:eastAsia="Calibri"/><w:sz w:val="24"/><w:lang w:val="en-US"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="160" w:line="276" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>${heading("Title", "Title", 40, null)}${heading("Heading1", "heading 1", 32, 0)}${heading("Heading2", "heading 2", 28, 1)}${heading("Heading3", "heading 3", 26, 2)}</w:styles>"""
         val contentTypes = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>"""
         val rels = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -146,7 +161,7 @@ $body</body>
             val body = buildString {
                 if (i == 0) append("<h1>").append(esc(title)).append("</h1>\n")
                 if (s.heading != null) append("<h2>").append(esc(s.heading)).append("</h2>\n")
-                for (p in s.paragraphs) append("<p>").append(esc(p)).append("</p>\n")
+                for (p in s.paragraphs) append(htmlPara(p))
             }
             Pair(s.heading ?: title, xhtml(s.heading ?: title, "<section>\n$body</section>\n"))
         }
@@ -206,11 +221,12 @@ $body</body>
         val bodyPaint = TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK; textSize = 12f }
         val h1 = TextPaint(bodyPaint).apply { textSize = 20f; isFakeBoldText = true }
         val h2 = TextPaint(bodyPaint).apply { textSize = 16f; isFakeBoldText = true }
+        val h3 = TextPaint(bodyPaint).apply { textSize = 14f; isFakeBoldText = true }
         val blocks = ArrayList<Pair<String, TextPaint>>()
         blocks.add(title to h1)
         for (s in secs) {
             if (s.heading != null) blocks.add(s.heading to h2)
-            for (p in s.paragraphs) blocks.add(p to bodyPaint)
+            for (p in s.paragraphs) blocks.add(p.text to when (p.level) { 0 -> bodyPaint; 2 -> h2; else -> h3 })
         }
         val pdf = PdfDocument()
         var pageNo = 0

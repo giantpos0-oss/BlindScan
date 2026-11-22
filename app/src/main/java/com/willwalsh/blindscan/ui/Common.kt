@@ -79,8 +79,12 @@ data class ScannedPage(
     /** A note for the test report about the light, e.g. which of two photos was used. */
     val lightNote: String = "",
     val altPhoto: File? = null,
+    /** Heading level of each paragraph (0 text, 1 heading, 2 subheading); empty while still reading. */
+    val headings: List<Int> = emptyList(),
 ) {
     val text: String get() = paragraphs.joinToString("\n\n")
+    /** Heading level of paragraph [i], or 0. */
+    fun headingOf(i: Int): Int = if (headings.size == paragraphs.size) headings[i] else 0
 }
 
 /**
