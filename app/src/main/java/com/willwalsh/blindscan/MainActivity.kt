@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Help
+import androidx.compose.material.icons.filled.QuestionAnswer
 import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Settings
@@ -149,13 +150,26 @@ private fun AppRoot() {
         }
     }
     val goHome = { tab = Tab.LIVE }
+    // The document questions are about: the one showing, or else the most recent.
+    val askDoc = (DocumentStore.open ?: DocumentStore.last)?.takeIf { d -> d.pages.any { it.paragraphs.isNotEmpty() } }
     Scaffold(
+        // Ask a question: bottom right on every screen once there's a scanned document.
+        floatingActionButton = {
+            if (askDoc != null && !com.willwalsh.blindscan.ui.AskState.open) {
+                androidx.compose.material3.ExtendedFloatingActionButton(
+                    onClick = { reader.stopSpeaking(); com.willwalsh.blindscan.ui.AskState.open = true },
+                    icon = { Icon(Icons.Filled.QuestionAnswer, contentDescription = null) },
+                    text = { Text("Ask a question", fontSize = 18.sp) },
+                )
+            }
+        },
         bottomBar = {
             NavigationBar {
                 for (t in Tab.entries) {
                     NavigationBarItem(
                         selected = tab == t,
                         onClick = {
+                            com.willwalsh.blindscan.ui.AskState.open = false
                             if (tab == Tab.SCAN && t == Tab.SCAN) {
                                 // Pressing Scan document again starts fresh: the scanned page(s) are cleared.
                                 val hadSomething = DocumentStore.open != null || DocumentStore.batch.isNotEmpty() ||
@@ -178,7 +192,11 @@ private fun AppRoot() {
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
-            when (tab) {
+            if (com.willwalsh.blindscan.ui.AskState.open && askDoc != null) {
+                com.willwalsh.blindscan.ui.AskScreen(askDoc, reader, announcer, onClose = {
+                    reader.stopSpeaking(); com.willwalsh.blindscan.ui.AskState.open = false
+                })
+            } else when (tab) {
                 Tab.LIVE -> CameraPermissionGate { LiveScreen() }
                 Tab.SCAN -> if (DocumentStore.open != null) ScanScreen(onUp = goHome) else CameraPermissionGate { ScanScreen(onUp = goHome) }
                 Tab.HELP -> HelpScreen(onUp = goHome)

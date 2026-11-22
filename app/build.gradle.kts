@@ -6,14 +6,14 @@ plugins {
 
 android {
     namespace = "com.willwalsh.blindscan"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.willwalsh.blindscan"
         minSdk = 26
         targetSdk = 35
-        versionCode = 14
-        versionName = "0.2.12"
+        versionCode = 15
+        versionName = "0.3.0"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
 
@@ -44,10 +44,13 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
     androidResources { noCompress += listOf("onnx") }
     packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
+}
+
+kotlin {
+    compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
 }
 
 dependencies {
@@ -68,4 +71,9 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
+
+    // Ask a question: the phone's built-in AI (Gemini Nano through Android's AICore)...
+    implementation("com.google.mlkit:genai-prompt:1.0.0-beta5")
+    // ...and BlindScan's own downloadable model, run on the phone.
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.19.1")
 }

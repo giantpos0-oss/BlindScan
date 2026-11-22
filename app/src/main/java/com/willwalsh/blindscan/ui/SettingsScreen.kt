@@ -41,6 +41,7 @@ private enum class SettingsPage(val title: String) {
     SPEECH("Speech"),
     ACCURACY("Accuracy and speed"),
     CAMERA("Camera and positioning"),
+    ASK("Ask a question"),
     PROBLEMS("Problems"),
 }
 
@@ -101,6 +102,29 @@ fun SettingsScreen(onUp: () -> Unit) {
                 Toggle("Turn the light on automatically in dim places", s.autoLight) { s.autoLight = it }
                 Toggle("Tilt prompts (for pages lying flat)", s.tiltHints) { s.tiltHints = it }
                 Toggle("Scan automatically when ready", s.autoScan) { s.autoScan = it }
+            }
+            SettingsPage.ASK -> {
+                Section("Answers come from")
+                Column(Modifier.selectableGroup()) {
+                    for (c in com.willwalsh.blindscan.AskEngineChoice.entries) {
+                        Row(
+                            Modifier.fillMaxWidth().heightIn(min = 56.dp)
+                                .selectable(selected = s.askEngine == c, role = Role.RadioButton, onClick = { s.askEngine = c })
+                                .padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = s.askEngine == c, onClick = null)
+                            Text(c.label, fontSize = 19.sp, modifier = Modifier.padding(start = 12.dp))
+                        }
+                    }
+                }
+                Toggle("Download BlindScan's own AI over Wi-Fi only (about 1.6 GB)", s.askWifiOnly) { s.askWifiOnly = it }
+                var hasModel by androidx.compose.runtime.remember { mutableStateOf(com.willwalsh.blindscan.ai.OwnModel.isReady(context) || com.willwalsh.blindscan.ai.OwnModel.isDownloading(context)) }
+                if (hasModel) {
+                    BigButton("Delete BlindScan's own AI (frees about 1.6 GB)", onClick = {
+                        com.willwalsh.blindscan.ai.OwnModel.delete(context); hasModel = false
+                    })
+                }
             }
             SettingsPage.PROBLEMS -> {
                 BigButton("Share crash report", onClick = {

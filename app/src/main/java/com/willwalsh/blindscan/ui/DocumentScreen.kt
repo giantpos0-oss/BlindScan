@@ -147,6 +147,12 @@ fun DocumentScreen(doc: ScannedDocument, onClose: () -> Unit) {
         } else reader.clear()
     }
     LaunchedEffect(doc.id, doc.readFrom, doc.revision) {
+        // Scan and ask: the page isn't read aloud; Ask a question opens as soon as it's read.
+        if (AskState.afterScan) {
+            if (!doc.reading) return@LaunchedEffect
+            streamer.take(textToRead, done = false) // count what's been seen, without speaking it
+            return@LaunchedEffect
+        }
         if (settings.documentVoice == Voice.TEXT_TO_SPEECH) {
             reader.appendStream(streamer.take(textToRead, done = !doc.reading))
             if (!doc.reading) reader.endStream()

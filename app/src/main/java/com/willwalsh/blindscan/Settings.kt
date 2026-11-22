@@ -10,6 +10,13 @@ import androidx.core.content.edit
 
 enum class Voice { SCREEN_READER, TEXT_TO_SPEECH }
 
+/** Which AI answers questions about a document. */
+enum class AskEngineChoice(val label: String) {
+    AUTOMATIC("Automatic: the phone's built-in AI if it has one, otherwise BlindScan's own"),
+    BUILT_IN("Phone's built-in AI only (Gemini Nano)"),
+    BLINDSCAN("BlindScan's own downloaded AI only"),
+}
+
 /** All user settings, saved instantly. Compose screens read these directly. */
 class Settings(context: Context) {
     private val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -81,6 +88,20 @@ class Settings(context: Context) {
     var fastMath: Boolean
         get() = _fastMath.value
         set(v) { _fastMath.value = v; save("fastMathV2", v); onEngineSettingChanged?.invoke() }
+
+    private var _askEngine by mutableStateOf(
+        runCatching { AskEngineChoice.valueOf(prefs.getString("askEngine", AskEngineChoice.AUTOMATIC.name)!!) }
+            .getOrDefault(AskEngineChoice.AUTOMATIC)
+    )
+    var askEngine: AskEngineChoice
+        get() = _askEngine
+        set(v) { _askEngine = v; prefs.edit { putString("askEngine", v.name) } }
+
+    private val _askWifiOnly = bool("askWifiOnly", true)
+    /** Download BlindScan's own AI only over Wi-Fi (it's about 1.6 GB). */
+    var askWifiOnly: Boolean
+        get() = _askWifiOnly.value
+        set(v) { _askWifiOnly.value = v; save("askWifiOnly", v) }
 
     /** Set by the app so engines can be rebuilt when an engine setting changes. */
     var onEngineSettingChanged: (() -> Unit)? = null

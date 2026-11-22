@@ -65,6 +65,20 @@ private val HELP = listOf(
             "so they don't interrupt it. A big decorative first letter is joined back onto its word.",
         "A title printed over a short piece of text, like each year on a timeline, is read just before that text.",
     ),
+    "Ask a question" to listOf(
+        "Once you've scanned something, an Ask a question button sits at the bottom right of every screen. " +
+            "Ask anything about the document, like: what's the total, when is it due, what vegetarian dishes " +
+            "are there, who is this letter from. Type your question, or press Say your question and speak it.",
+        "The answer is spoken with your screen reader, or with Android speech if you chose that for documents, " +
+            "and shown on screen. Ask follow-up questions; it remembers the last couple of questions.",
+        "Scan and ask a question, on the Scan document screen, gives the same positioning help and takes the " +
+            "picture the same way (automatically or with the button, as set), then goes straight to the " +
+            "question instead of reading the page aloud.",
+        "The AI runs on the phone; nothing you scan is sent anywhere. Phones with Google's built-in AI " +
+            "(Gemini Nano, on recent Pixel, Samsung Galaxy S and other phones) use it. Other phones download " +
+            "BlindScan's own AI once, about 1.6 gigabytes. Choose which in Settings, Ask a question.",
+        "AI can misread or make mistakes. Check anything important, like amounts due or medicine doses.",
+    ),
     "Headings" to listOf(
         "Headlines in big type, and titles printed right over their text (such as a year on a timeline or " +
             "Mains on a menu), become headings. On the document screen they are real headings, so you can " +
