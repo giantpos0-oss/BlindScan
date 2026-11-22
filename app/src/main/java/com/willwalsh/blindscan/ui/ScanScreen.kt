@@ -166,14 +166,14 @@ internal suspend fun readPage(
             if (lightOffPhoto == null) {
                 result = readOne(photo, progress = true)
             } else {
-                // The light was on: glossy paper can reflect it and wash words out. Read the photo
-                // taken with the light off too, and keep whichever gave more real words.
-                val withLight = readOne(photo, progress = false)
-                val noLight = readOne(lightOffPhoto, progress = false)
-                val a = realWords(app, withLight); val b = realWords(app, noLight)
-                result = if (b > a) noLight else withLight
-                note = "Light was on: read with light $a words, without light $b words; used the photo " +
-                    (if (b > a) "without the light." else "with the light.")
+                // The light was on: glossy paper can reflect it and wash words out. Look for text in
+                // the photo taken with the light off too (finding text is quick; reading it isn't),
+                // then read just the photo that shows more text, speaking as it goes.
+                val a = textFound(app, photo); val b = textFound(app, lightOffPhoto)
+                val useOff = b > 1.15f * a
+                result = readOne(if (useOff) lightOffPhoto else photo, progress = true)
+                note = "Light was on: text found with light ${a.toInt()}, without light ${b.toInt()}; read the photo " +
+                    (if (useOff) "without the light." else "with the light.")
                 lightOffPhoto.recycle()
             }
             photo.recycle()
@@ -192,17 +192,10 @@ internal suspend fun readPage(
         }
 }
 
-/** How many recognised words are real English words or numbers: a measure of how well a photo read. */
-private fun realWords(app: BlindScanApp, r: OcrEngine.Result?): Int {
-    if (r == null) return 0
-    var n = 0
-    for (p in r.paragraphs) for (token in p.split(' ')) {
-        val core = token.trim { !it.isLetterOrDigit() }
-        if (core.isEmpty()) continue
-        if (core.any { it.isDigit() } || (core.length >= 2 && app.corrector.isKnownWord(core))) n++
-    }
-    return n
-}
+/** How much text the page detector finds in a photo: total length of the lines, in line heights. */
+private fun textFound(app: BlindScanApp, b: Bitmap): Float = try {
+    app.documentEngine.detect(b, 1600).sumOf { (maxOf(it.w, it.h) / maxOf(1f, minOf(it.w, it.h))).toDouble() }.toFloat()
+} catch (_: Throwable) { 0f }
 
 @Composable
 private fun ScanCamera(onUp: () -> Unit) {

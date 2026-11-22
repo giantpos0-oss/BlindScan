@@ -39,6 +39,8 @@ private val HELP = listOf(
         "Check view gives a full report whenever you want one: roughly how many lines of text it can see, " +
             "whether any text runs off an edge, whether the page's edges are visible, and the lighting.",
         "Open last document brings back your most recent scan.",
+        "To keep a document, choose Save to device as from Document actions, then pick a format: plain text, " +
+            "Word (DOCX), PDF, web page (HTML), Markdown, or e-book (EPUB). Pages become headings in every format.",
         "Import image or PDF reads pictures and scanned PDF files already on your phone: choose one or " +
             "several files. Every page of a PDF is read, one after another, into one document. You can also " +
             "share a picture or PDF to BlindScan from another app, such as Files, Photos or your email.",

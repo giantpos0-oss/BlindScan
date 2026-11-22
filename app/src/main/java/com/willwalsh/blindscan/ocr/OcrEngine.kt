@@ -55,7 +55,11 @@ class OcrEngine(
 
     private val env = OrtEnvironment.getEnvironment()
     private val cores = Runtime.getRuntime().availableProcessors()
-    private val workers = (cores / 2).coerceIn(2, 4)
+    // One single-threaded reader per worker; leave a core or two for the camera and speech.
+    private val workers = (cores - 2).coerceIn(2, 6)
+    /** Readings at least this confident are kept as they are (no second crop). */
+    private val SURE = 0.97f
+
     private val pool: ExecutorService = Executors.newFixedThreadPool(workers)
 
     /** True when the XNNPACK math library is in use. */
@@ -176,13 +180,28 @@ class OcrEngine(
      * Reads one line from one or more crops of it (the most confident reading wins), then a
      * sharpened second try if still unsure, then word correction.
      */
-    fun recognize(crops: List<Bitmap>, retryBlurry: Boolean = true, correct: Boolean = true): LineRead {
+    fun recognize(
+        crops: List<Bitmap>, retryBlurry: Boolean = true, correct: Boolean = true,
+        /** A second, tighter crop, made and read only when the first reading isn't sure. */
+        extraCrop: (() -> Bitmap)? = null,
+    ): LineRead {
         var raw = recognizeRaw(crops[0])
         var crop = crops[0]
         for (k in 1 until crops.size) {
             val other = recognizeRaw(crops[k])
             if (other.confidence > raw.confidence) { raw = other; crop = crops[k] }
         }
+        var extra: Bitmap? = null
+        if (extraCrop != null && raw.confidence < SURE) {
+            val c = extraCrop(); extra = c
+            val other = recognizeRaw(c)
+            if (other.confidence > raw.confidence) { raw = other; crop = c }
+        }
+        try { return finish(raw, crop, retryBlurry, correct) } finally { extra?.recycle() }
+    }
+
+    private fun finish(raw0: RawRead, crop: Bitmap, retryBlurry: Boolean, correct: Boolean): LineRead {
+        var raw = raw0
         if (retryBlurry && raw.confidence < 0.8f) {
             val sharp = ImageTensors.sharpenForRetry(crop)
             val second = recognizeRaw(sharp)
@@ -281,10 +300,12 @@ class OcrEngine(
                     // Read each line twice: as found, and cropped 15% tighter top and bottom.
                     // Keeping the more confident reading removed about a quarter of the errors
                     // on small, unusual print in testing.
+                    // Only lines the first reading isn't sure of (most lines are) get the second crop.
                     val b = boxes[i]
-                    val crops = if (secondCrop) listOf(crop(page, b), crop(page, tighter(b))) else listOf(crop(page, b))
-                    val r = recognize(crops, retryBlurry, correct)
-                    crops.forEach { it.recycle() }
+                    val first = crop(page, b)
+                    val r = recognize(listOf(first), retryBlurry, correct,
+                        extraCrop = if (secondCrop) ({ crop(page, tighter(b)) }) else null)
+                    first.recycle()
                     r
                 } catch (_: Throwable) { null }
             })

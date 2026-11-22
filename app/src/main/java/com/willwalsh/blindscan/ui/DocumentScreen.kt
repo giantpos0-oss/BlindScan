@@ -48,7 +48,7 @@ import com.willwalsh.blindscan.BlindScanApp
 import com.willwalsh.blindscan.LocalSettings
 import com.willwalsh.blindscan.Voice
 import com.willwalsh.blindscan.speech.StreamChunker
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -67,12 +67,21 @@ fun DocumentScreen(doc: ScannedDocument, onClose: () -> Unit) {
 
     fun say(text: String) = announcer.say(text, view, settings.documentVoice == Voice.SCREEN_READER)
 
-    val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+    var saveFormat by remember { mutableStateOf(ExportFormat.TXT) }
+    var choosingFormat by remember { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val saveLauncher = rememberLauncherForActivityResult(CreateTypedDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        val ok = runCatching {
-            context.contentResolver.openOutputStream(uri)?.use { it.write(doc.text.toByteArray()) } != null
-        }.getOrDefault(false)
-        say(if (ok) "Saved." else "Couldn't save the file.")
+        val format = saveFormat
+        val title = defaultTitle()
+        scope.launch {
+            val ok = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openOutputStream(uri)?.use { Exporter.write(doc, title, format, it) } != null
+                }.getOrDefault(false)
+            }
+            say(if (ok) "Saved as ${format.label}." else "Couldn't save the file.")
+        }
     }
 
     // ---- the document actions, used by the menu AND by the screen reader's Actions list
@@ -83,7 +92,7 @@ fun DocumentScreen(doc: ScannedDocument, onClose: () -> Unit) {
             if (!readerState.hasText) reader.load(doc.text, true) else reader.play()
         }
     }
-    val save: () -> Unit = { saveLauncher.launch(defaultFileName(doc.id)) }
+    val save: () -> Unit = { choosingFormat = true }
     val share: () -> Unit = {
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
@@ -115,7 +124,7 @@ fun DocumentScreen(doc: ScannedDocument, onClose: () -> Unit) {
 
     val a11yActions = listOf(
         CustomAccessibilityAction(if (readerState.playing) "Pause reading" else "Read aloud") { readAloud(); true },
-        CustomAccessibilityAction("Save to device") { save(); true },
+        CustomAccessibilityAction("Save to device as") { save(); true },
         CustomAccessibilityAction("Share text") { share(); true },
         CustomAccessibilityAction("Copy text") { copy(); true },
         CustomAccessibilityAction("Add another page") { addPage(); true },
@@ -156,6 +165,31 @@ fun DocumentScreen(doc: ScannedDocument, onClose: () -> Unit) {
     }
     DisposableEffect(Unit) { onDispose { reader.stopSpeaking() } }
 
+    if (choosingFormat) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { choosingFormat = false },
+            title = { Text("Save as", modifier = Modifier.semantics { heading() }) },
+            text = {
+                Column {
+                    for (f in ExportFormat.entries) {
+                        androidx.compose.material3.TextButton(
+                            onClick = {
+                                choosingFormat = false
+                                saveFormat = f
+                                saveLauncher.launch(Pair(defaultTitle() + "." + f.extension, f.mime))
+                            },
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                        ) { Text(f.label, fontSize = 20.sp, modifier = Modifier.fillMaxWidth()) }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { choosingFormat = false }) { Text("Cancel", fontSize = 20.sp) }
+            },
+        )
+    }
+
     Column(Modifier.fillMaxSize()) {
         // Top bar: Navigate up and the title on the left, Document actions at the top right.
         TopBar(if (doc.pages.size > 1) "Document, ${doc.pages.size} pages" else "Document", onUp = newScan) {
@@ -165,7 +199,7 @@ fun DocumentScreen(doc: ScannedDocument, onClose: () -> Unit) {
                 }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     MenuItem(if (readerState.playing) "Pause reading" else "Read aloud") { menuOpen = false; readAloud() }
-                    MenuItem("Save to device") { menuOpen = false; save() }
+                    MenuItem("Save to device as") { menuOpen = false; save() }
                     MenuItem("Share text") { menuOpen = false; share() }
                     MenuItem("Copy text") { menuOpen = false; copy() }
                     MenuItem("Add another page") { menuOpen = false; addPage() }
@@ -228,8 +262,17 @@ private fun MenuItem(text: String, onClick: () -> Unit) {
     DropdownMenuItem(text = { Text(text, fontSize = 20.sp) }, onClick = onClick, modifier = Modifier.heightIn(min = 56.dp))
 }
 
-private fun defaultFileName(id: Long): String =
-    "Scan " + SimpleDateFormat("yyyy-MM-dd HH-mm", Locale.getDefault()).format(Date()) + ".txt"
+private fun defaultTitle(): String =
+    "Scan " + SimpleDateFormat("yyyy-MM-dd HH-mm", Locale.getDefault()).format(Date())
+
+/** "Save to device" for any file type: input is the suggested file name and its type. */
+private class CreateTypedDocument : androidx.activity.result.contract.ActivityResultContract<Pair<String, String>, Uri?>() {
+    override fun createIntent(context: Context, input: Pair<String, String>) =
+        Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+            .setType(input.second).putExtra(Intent.EXTRA_TITLE, input.first)
+    override fun parseResult(resultCode: Int, intent: Intent?): Uri? =
+        if (resultCode == android.app.Activity.RESULT_OK) intent?.data else null
+}
 
 /**
  * Shares the original photo(s) plus a report (recognised text, confidence, timings, phone details)
