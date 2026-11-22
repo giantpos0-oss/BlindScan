@@ -141,27 +141,24 @@ fun DocumentScreen(doc: ScannedDocument, onClose: () -> Unit) {
         if (settings.documentVoice == Voice.TEXT_TO_SPEECH) {
             reader.appendStream(streamer.take(textToRead, done = !doc.reading))
             if (!doc.reading) reader.endStream()
+        } else if (announcer.screenReaderOn) {
+            // Your screen reader speaks each part the moment it is recognised (the same moment it
+            // appears on screen), a sentence or a few at a time, instead of waiting for the whole page.
+            val ready = streamer.take(textToRead, done = !doc.reading)
+            if (ready.isNotEmpty()) {
+                @Suppress("DEPRECATION")
+                view.announceForAccessibility(ready.joinToString(" "))
+            }
         } else if (!doc.reading && !announced) {
             announced = true
-            delay(500) // let the screen reader finish its own announcement first
-            if (announcer.screenReaderOn) {
-                @Suppress("DEPRECATION")
-                view.announceForAccessibility(textToRead)
-            } else {
-                reader.load(textToRead, autoPlay = true) // no screen reader running: fall back to speech
-            }
+            reader.load(textToRead, autoPlay = true) // no screen reader running: fall back to speech
         }
     }
     DisposableEffect(Unit) { onDispose { reader.stopSpeaking() } }
 
     Column(Modifier.fillMaxSize()) {
-        // Top bar: title on the left, Document actions at the top right.
-        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                if (doc.pages.size > 1) "Document, ${doc.pages.size} pages" else "Document",
-                fontSize = 24.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f).semantics { heading() },
-            )
+        // Top bar: Navigate up and the title on the left, Document actions at the top right.
+        TopBar(if (doc.pages.size > 1) "Document, ${doc.pages.size} pages" else "Document", onUp = newScan) {
             Box {
                 IconButton(onClick = { menuOpen = true }, modifier = Modifier.heightIn(min = 56.dp)) {
                     Icon(Icons.Filled.MoreVert, contentDescription = "Document actions")

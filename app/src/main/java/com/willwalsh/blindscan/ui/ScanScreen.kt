@@ -47,12 +47,12 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 @Composable
-fun ScanScreen() {
+fun ScanScreen(onUp: () -> Unit) {
     val doc = DocumentStore.open
     if (doc != null) {
         DocumentScreen(doc, onClose = { DocumentStore.close() })
     } else {
-        ScanCamera()
+        ScanCamera(onUp)
     }
 }
 
@@ -138,7 +138,20 @@ private fun readInBackground(
     lightOffPhoto: Bitmap? = null,
 ) {
     app.appScope.launch {
-        readingLock.withLock {
+        val page = readPage(app, context, photo, onProgress, lightOffPhoto)
+        withContext(Dispatchers.Main) { onDone(page) }
+    }
+}
+
+/** Reads [photo] (one page at a time across the app) and returns the finished page. */
+internal suspend fun readPage(
+    app: BlindScanApp,
+    context: Context,
+    photo: Bitmap,
+    onProgress: (List<String>) -> Unit,
+    lightOffPhoto: Bitmap? = null,
+): ScannedPage {
+        return readingLock.withLock {
             app.markScanStarted()
             val file = ScanPhotos.save(context, photo)
             val altFile = lightOffPhoto?.let { ScanPhotos.save(context, it) }
@@ -175,9 +188,8 @@ private fun readInBackground(
                 lineConfidences = result?.lines?.map { it.confidence } ?: emptyList(),
                 lightNote = note,
             )
-            withContext(Dispatchers.Main) { onDone(page) }
+            page
         }
-    }
 }
 
 /** How many recognised words are real English words or numbers: a measure of how well a photo read. */
@@ -193,7 +205,7 @@ private fun realWords(app: BlindScanApp, r: OcrEngine.Result?): Int {
 }
 
 @Composable
-private fun ScanCamera() {
+private fun ScanCamera(onUp: () -> Unit) {
     val context = LocalContext.current
     val app = context.applicationContext as BlindScanApp
     val settings = LocalSettings.current
@@ -223,6 +235,10 @@ private fun ScanCamera() {
     val batch = DocumentStore.batch
 
     fun say(text: String) = announcer.say(text, view, settings.documentVoice == Voice.SCREEN_READER)
+
+    val importLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris -> if (uris.isNotEmpty()) importFiles(app, context, uris, ::say) }
 
     /** One page, read and shown straight away (or added to the document being built). */
     fun scanSingle(photo: Bitmap, lightOff: Bitmap?) {
@@ -348,7 +364,7 @@ private fun ScanCamera() {
     }
 
     Column(Modifier.fillMaxSize()) {
-        ScreenHeading("Scan document")
+        TopBar("Scan document", onUp = onUp)
         CameraPreview(camera, Modifier.fillMaxWidth().weight(1f))
         Row(
             Modifier.fillMaxWidth().heightIn(min = 72.dp).padding(12.dp),
@@ -402,8 +418,11 @@ private fun ScanCamera() {
             }
         }
         val last = DocumentStore.last
-        if (last != null && batch.isEmpty() && DocumentStore.addingTo == null) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+            SmallButton("Import image or PDF", enabled = !busy, onClick = {
+                importLauncher.launch(arrayOf("image/*", "application/pdf"))
+            })
+            if (last != null && batch.isEmpty() && DocumentStore.addingTo == null) {
                 SmallButton("Open last document", onClick = { DocumentStore.open = last.copy(readFrom = 0) })
             }
         }

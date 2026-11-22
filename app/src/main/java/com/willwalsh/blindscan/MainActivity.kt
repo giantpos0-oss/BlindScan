@@ -42,6 +42,11 @@ import com.willwalsh.blindscan.ui.ScanScreen
 import com.willwalsh.blindscan.ui.SettingsScreen
 import com.willwalsh.blindscan.ui.VolumeKeys
 
+/** Files shared to BlindScan from another app, waiting to be read. */
+object SharedFiles {
+    var pending by androidx.compose.runtime.mutableStateOf<List<android.net.Uri>>(emptyList())
+}
+
 enum class Tab(val label: String, val icon: ImageVector) {
     LIVE("Live mode", Icons.Filled.RecordVoiceOver),
     SCAN("Scan document", Icons.Filled.DocumentScanner),
@@ -59,6 +64,7 @@ class MainActivity : ComponentActivity() {
         val app = application as BlindScanApp
         reader = Reader(this).also { it.rate = app.settings.speechRate }
         val announcer = Announcer(this, reader)
+        takeSharedFiles(intent)
         setContent {
             BlindScanTheme {
                 CompositionLocalProvider(
@@ -82,6 +88,29 @@ class MainActivity : ComponentActivity() {
             return true // swallow both press and release so the volume doesn't change
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        takeSharedFiles(intent)
+    }
+
+    /** A picture or PDF shared to BlindScan, or opened with it, from another app. */
+    private fun takeSharedFiles(intent: android.content.Intent?) {
+        if (intent == null) return
+        val uris = ArrayList<android.net.Uri>()
+        when (intent.action) {
+            android.content.Intent.ACTION_SEND -> {
+                @Suppress("DEPRECATION")
+                (intent.getParcelableExtra<android.net.Uri>(android.content.Intent.EXTRA_STREAM))?.let { uris.add(it) }
+            }
+            android.content.Intent.ACTION_SEND_MULTIPLE -> {
+                @Suppress("DEPRECATION")
+                intent.getParcelableArrayListExtra<android.net.Uri>(android.content.Intent.EXTRA_STREAM)?.let { uris.addAll(it) }
+            }
+            android.content.Intent.ACTION_VIEW -> intent.data?.let { uris.add(it) }
+        }
+        if (uris.isNotEmpty()) SharedFiles.pending = uris
     }
 
     override fun onDestroy() {
@@ -108,6 +137,18 @@ private fun AppRoot() {
             app.startupNotice = null
         }
     }
+    // Files shared to BlindScan: read them as a document on the Scan document tab.
+    val shared = SharedFiles.pending
+    androidx.compose.runtime.LaunchedEffect(shared) {
+        if (shared.isEmpty()) return@LaunchedEffect
+        SharedFiles.pending = emptyList()
+        reader.clear()
+        tab = Tab.SCAN
+        com.willwalsh.blindscan.ui.importFiles(context.applicationContext as BlindScanApp, context, shared) {
+            announcer.say(it, view, settings.documentVoice == Voice.SCREEN_READER)
+        }
+    }
+    val goHome = { tab = Tab.LIVE }
     Scaffold(
         bottomBar = {
             NavigationBar {
@@ -139,9 +180,9 @@ private fun AppRoot() {
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (tab) {
                 Tab.LIVE -> CameraPermissionGate { LiveScreen() }
-                Tab.SCAN -> CameraPermissionGate { ScanScreen() }
-                Tab.HELP -> HelpScreen()
-                Tab.SETTINGS -> SettingsScreen()
+                Tab.SCAN -> if (DocumentStore.open != null) ScanScreen(onUp = goHome) else CameraPermissionGate { ScanScreen(onUp = goHome) }
+                Tab.HELP -> HelpScreen(onUp = goHome)
+                Tab.SETTINGS -> SettingsScreen(onUp = goHome)
             }
         }
     }

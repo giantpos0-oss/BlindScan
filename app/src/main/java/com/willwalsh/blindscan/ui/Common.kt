@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Pause
@@ -95,9 +96,13 @@ data class ScannedDocument(
     val reading: Boolean get() = pages.any { it.reading }
     val text: String get() = textOf(0)
     /** Text of the pages from [from] on, with "Page N" headings when there is more than one page. */
-    fun textOf(from: Int): String =
-        if (pages.size == 1) pages[0].text
-        else pages.withIndex().drop(from).joinToString("\n\n") { (i, p) -> "Page ${i + 1}\n\n${p.text}" }
+    fun textOf(from: Int): String {
+        if (pages.size == 1) return pages[0].text
+        // Up to the page being read now: later pages (still waiting) aren't announced yet.
+        val upTo = pages.indexOfFirst { it.reading }.let { if (it < 0) pages.size - 1 else it }
+        return pages.withIndex().drop(from).filter { it.index <= upTo }
+            .joinToString("\n\n") { (i, p) -> "Page ${i + 1}\n\n${p.text}" }
+    }
 }
 
 object DocumentStore {
@@ -127,6 +132,25 @@ object DocumentStore {
         val d = open?.takeIf { it.id == docId } ?: last?.takeIf { it.id == docId } ?: return
         val pages = d.pages.toMutableList()
         pages[pages.size - 1] = change(pages.last())
+        val nd = d.copy(pages = pages, revision = d.revision + 1)
+        if (open?.id == docId) open = nd
+        last = nd
+    }
+
+    /** Opens a new document of [count] pages still to be read (files you imported). */
+    fun startImport(count: Int): ScannedDocument {
+        addingTo = null
+        val doc = ScannedDocument(List(count) { ScannedPage(reading = true, key = System.nanoTime() + it) })
+        open = doc; last = doc
+        return doc
+    }
+
+    /** Replaces page [index] of the document [docId] (same id: reading carries on). */
+    fun updatePage(docId: Long, index: Int, change: (ScannedPage) -> ScannedPage) {
+        val d = open?.takeIf { it.id == docId } ?: last?.takeIf { it.id == docId } ?: return
+        if (index !in d.pages.indices) return
+        val pages = d.pages.toMutableList()
+        pages[index] = change(pages[index])
         val nd = d.copy(pages = pages, revision = d.revision + 1)
         if (open?.id == docId) open = nd
         last = nd
@@ -226,5 +250,28 @@ fun DvrControls(reader: Reader, playing: Boolean, enabled: Boolean, onUserContro
             onClick = { onUserControl(); reader.fastForward() }, enabled = enabled,
             modifier = Modifier.weight(1f).heightIn(min = 64.dp),
         ) { Icon(Icons.Filled.FastForward, contentDescription = "Fast forward one sentence") }
+    }
+}
+
+/**
+ * The bar at the top of a screen, under the status bar: a Navigate up button on the left when
+ * there is somewhere to go up to, the screen's title, then any [actions] on the right.
+ */
+@Composable
+fun TopBar(title: String, onUp: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(start = if (onUp != null) 4.dp else 16.dp, end = 4.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+    ) {
+        if (onUp != null) {
+            androidx.compose.material3.IconButton(onClick = onUp, modifier = Modifier.heightIn(min = 56.dp)) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Navigate up")
+            }
+        }
+        Text(
+            title, fontSize = 24.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.weight(1f).padding(start = if (onUp != null) 8.dp else 0.dp).semantics { heading() },
+        )
+        actions()
     }
 }

@@ -16,6 +16,11 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
@@ -30,59 +35,84 @@ import com.willwalsh.blindscan.LocalSettings
 import com.willwalsh.blindscan.Voice
 import java.util.Locale
 
+private enum class SettingsPage(val title: String) {
+    DOCUMENTS("Reading scanned documents"),
+    LIVE("Live mode"),
+    SPEECH("Speech"),
+    ACCURACY("Accuracy and speed"),
+    CAMERA("Camera and positioning"),
+    PROBLEMS("Problems"),
+}
+
+/** Settings, grouped: a list of categories, each opening its own screen. */
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(onUp: () -> Unit) {
     val s = LocalSettings.current
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
-        ScreenHeading("Settings")
-
-        Section("Reading scanned documents")
-        VoiceChoice(s.documentVoice) { s.documentVoice = it }
-
-        Section("Reading in live mode")
-        VoiceChoice(s.liveVoice) { s.liveVoice = it }
-        Toggle("Best accuracy in live mode (slower)", s.liveBestAccuracy) { s.liveBestAccuracy = it }
-
-        Section("Accuracy and speed")
-        Toggle("Correct unclear words using an English dictionary (numbers are never changed)", s.wordCorrection) { s.wordCorrection = it }
-        Toggle("Experimental fast math engine (XNNPACK). May be faster; turns itself off if a scan fails", s.fastMath) { s.fastMath = it }
-        Toggle("Batch scanning: scan several pages, then read them together", s.batchMode) { s.batchMode = it }
-
-        Section("Speech")
-        val rateText = String.format(Locale.getDefault(), "%.1f times normal speed", s.speechRate)
-        Text("Speech rate for Android text to speech: $rateText", fontSize = 19.sp, modifier = Modifier.padding(horizontal = 16.dp))
-        Slider(
-            value = s.speechRate,
-            onValueChange = { s.speechRate = (Math.round(it * 10) / 10f) },
-            valueRange = 0.5f..3.0f,
-            steps = 24,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .semantics { contentDescription = "Speech rate"; stateDescription = rateText },
-        )
-
-        val context = androidx.compose.ui.platform.LocalContext.current
-        val crash = (context.applicationContext as com.willwalsh.blindscan.BlindScanApp).crashFile
-        if (crash.exists()) {
-            Section("Problems")
-            BigButton("Share crash report", onClick = {
-                val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(android.content.Intent.EXTRA_SUBJECT, "BlindScan crash report")
-                    putExtra(android.content.Intent.EXTRA_TEXT, runCatching { crash.readText() }.getOrDefault("(could not read the report)"))
-                }
-                context.startActivity(android.content.Intent.createChooser(send, "Share crash report"))
-            })
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val crash = (context.applicationContext as com.willwalsh.blindscan.BlindScanApp).crashFile
+    var page by rememberSaveable { mutableStateOf<SettingsPage?>(null) }
+    val open = page
+    if (open == null) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
+            TopBar("Settings", onUp = onUp)
+            for (p in SettingsPage.entries) {
+                if (p == SettingsPage.PROBLEMS && !crash.exists()) continue
+                BigButton(p.title, onClick = { page = p })
+            }
         }
-
-        Section("Camera and positioning")
-        Toggle("Spoken positioning prompts", s.guidance) { s.guidance = it }
-        Toggle("Vibrate when ready to scan", s.vibration) { s.vibration = it }
-        Toggle("Volume buttons take the picture", s.volumeCapture) { s.volumeCapture = it }
-        Toggle("Turn the light on automatically in dim places", s.autoLight) { s.autoLight = it }
-        Toggle("Tilt prompts (for pages lying flat)", s.tiltHints) { s.tiltHints = it }
-        Toggle("Scan automatically when ready", s.autoScan) { s.autoScan = it }
+        return
+    }
+    BackHandler { page = null }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
+        TopBar(open.title, onUp = { page = null })
+        when (open) {
+            SettingsPage.DOCUMENTS -> {
+                Section("Read scanned documents with")
+                VoiceChoice(s.documentVoice) { s.documentVoice = it }
+            }
+            SettingsPage.LIVE -> {
+                Section("Read live mode with")
+                VoiceChoice(s.liveVoice) { s.liveVoice = it }
+                Toggle("Best accuracy in live mode (slower)", s.liveBestAccuracy) { s.liveBestAccuracy = it }
+            }
+            SettingsPage.SPEECH -> {
+                val rateText = String.format(Locale.getDefault(), "%.1f times normal speed", s.speechRate)
+                Text("Speech rate for Android text to speech: $rateText", fontSize = 19.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                Slider(
+                    value = s.speechRate,
+                    onValueChange = { s.speechRate = (Math.round(it * 10) / 10f) },
+                    valueRange = 0.5f..3.0f,
+                    steps = 24,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .semantics { contentDescription = "Speech rate"; stateDescription = rateText },
+                )
+            }
+            SettingsPage.ACCURACY -> {
+                Toggle("Correct unclear words using an English dictionary (numbers are never changed)", s.wordCorrection) { s.wordCorrection = it }
+                Toggle("Experimental fast math engine (XNNPACK). May be faster; turns itself off if a scan fails", s.fastMath) { s.fastMath = it }
+                Toggle("Batch scanning: scan several pages, then read them together", s.batchMode) { s.batchMode = it }
+            }
+            SettingsPage.CAMERA -> {
+                Toggle("Spoken positioning prompts", s.guidance) { s.guidance = it }
+                Toggle("Vibrate when ready to scan", s.vibration) { s.vibration = it }
+                Toggle("Volume buttons take the picture", s.volumeCapture) { s.volumeCapture = it }
+                Toggle("Turn the light on automatically in dim places", s.autoLight) { s.autoLight = it }
+                Toggle("Tilt prompts (for pages lying flat)", s.tiltHints) { s.tiltHints = it }
+                Toggle("Scan automatically when ready", s.autoScan) { s.autoScan = it }
+            }
+            SettingsPage.PROBLEMS -> {
+                BigButton("Share crash report", onClick = {
+                    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(android.content.Intent.EXTRA_SUBJECT, "BlindScan crash report")
+                        putExtra(android.content.Intent.EXTRA_TEXT, runCatching { crash.readText() }.getOrDefault("(could not read the report)"))
+                    }
+                    context.startActivity(android.content.Intent.createChooser(send, "Share crash report"))
+                })
+            }
+        }
     }
 }
 

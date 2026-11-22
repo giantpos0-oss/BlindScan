@@ -99,7 +99,7 @@ fun LiveScreen() {
     }
 
     Column(Modifier.fillMaxSize()) {
-        ScreenHeading("Live mode")
+        TopBar("Live mode")
         CameraPreview(camera, Modifier.fillMaxWidth().weight(1f))
         Text(
             shown,

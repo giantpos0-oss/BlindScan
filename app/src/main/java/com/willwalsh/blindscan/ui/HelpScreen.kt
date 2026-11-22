@@ -18,6 +18,9 @@ private val HELP = listOf(
         "BlindScan turns print into speech. Everything happens on your phone. The app has no internet " +
             "access at all, so nothing you scan ever leaves the device, and it is free.",
         "There are four tabs along the bottom of the screen: Live mode, Scan document, Help, and Settings.",
+        "At the top left of every screen except Live mode is a Navigate up button. On a document it goes back " +
+            "to the camera; in a settings group it goes back to the list of settings; elsewhere it goes to Live mode.",
+        "Settings are grouped. Choose a group, such as Speech or Camera and positioning, to see its settings.",
     ),
     "Live mode" to listOf(
         "Point the camera at anything with words on it: a package, a sign, a screen, a letter. As soon as the " +
@@ -36,6 +39,9 @@ private val HELP = listOf(
         "Check view gives a full report whenever you want one: roughly how many lines of text it can see, " +
             "whether any text runs off an edge, whether the page's edges are visible, and the lighting.",
         "Open last document brings back your most recent scan.",
+        "Import image or PDF reads pictures and scanned PDF files already on your phone: choose one or " +
+            "several files. Every page of a PDF is read, one after another, into one document. You can also " +
+            "share a picture or PDF to BlindScan from another app, such as Files, Photos or your email.",
         "To clear a scan and start fresh, press the Scan document tab again, even while a document is showing. " +
             "Everything you scanned is cleared, ready for a new page.",
     ),
@@ -107,9 +113,10 @@ private val HELP = listOf(
 )
 
 @Composable
-fun HelpScreen() {
+fun HelpScreen(onUp: () -> Unit) {
+    androidx.compose.foundation.layout.Column(Modifier.fillMaxSize()) {
+    TopBar("Help", onUp = onUp)
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        item { ScreenHeading("Help", Modifier.padding(start = 0.dp)) }
         items(HELP) { (title, paragraphs) ->
             Text(
                 title, fontSize = 22.sp, fontWeight = FontWeight.Bold,
@@ -118,4 +125,5 @@ fun HelpScreen() {
             for (p in paragraphs) Text(p, fontSize = 19.sp, modifier = Modifier.padding(vertical = 4.dp))
         }
     }
+}
 }
