@@ -314,6 +314,7 @@ class OcrEngine(
         }
         val lines = ArrayList<Line>()
         val rowTexts = ArrayList<String>()
+        try {
         for (row in layout.rows) {
             val sb = StringBuilder()
             var glue = false // the previous piece was a drop capital: no space before the next word
@@ -327,11 +328,18 @@ class OcrEngine(
                 }
             }
             rowTexts.add(sb.toString())
-            onProgress?.invoke(ReadingOrder.paragraphs(layout, rowTexts, ::isKnownWord))
+            // Progress is a courtesy: a problem showing it must never cost the reading itself.
+            if (onProgress != null) try { onProgress(ReadingOrder.paragraphs(layout, rowTexts, ::isKnownWord)) } catch (_: Throwable) { }
+        }
+        } finally {
+            // Never let the page picture be freed while a line is still being read from it.
+            for (f in futures.values) try { f.get() } catch (_: Throwable) { }
         }
         if (img !== source) img.recycle()
         val total = System.currentTimeMillis() - start
-        val paras = ReadingOrder.structured(layout, rowTexts, ::isKnownWord)
+        // If arranging the text into paragraphs ever fails, still give back every line that was read.
+        val paras = try { ReadingOrder.structured(layout, rowTexts, ::isKnownWord) }
+            catch (_: Throwable) { rowTexts.filter { it.isNotBlank() }.map { ReadingOrder.Para(it, 0) } }
         return Result(lines, paras.map { it.text }, detectMs, total - detectMs, paras.map { it.heading })
     }
 

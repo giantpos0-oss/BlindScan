@@ -509,7 +509,7 @@ object ReadingOrder {
             val b = layout.rows[at].block
             val lefts = ArrayList<Float>()
             for (k in max(0, at - 3)..min(layout.rows.size - 1, at + 3))
-                if (layout.rows[k].block == b && rowTexts[k].isNotBlank()) lefts.add(layout.rows[k].left)
+                if (layout.rows[k].block == b && rowTexts.getOrNull(k)?.isNotBlank() == true) lefts.add(layout.rows[k].left)
             return median(lefts)
         }
 
