@@ -12,8 +12,8 @@ android {
         applicationId = "com.willwalsh.blindscan"
         minSdk = 26
         targetSdk = 35
-        versionCode = 14
-        versionName = "0.2.12"
+        versionCode = 15
+        versionName = "0.2.13"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
 
@@ -47,6 +47,9 @@ android {
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
     androidResources { noCompress += listOf("onnx") }
+    // The user guide and release notes (docs/*.md) are bundled so the Help tab works offline.
+    // They are the same files the Help tab's browser buttons open, so there is only one copy to update.
+    sourceSets { getByName("main") { assets.srcDir(rootProject.file("docs")) } }
     packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
 }
 

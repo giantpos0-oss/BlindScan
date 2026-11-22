@@ -3,6 +3,14 @@
 A free Android document scanner and live text reader, made by a blind person for blind people.
 Everything runs on the phone. The app has **no internet permission at all**, so nothing you scan can ever leave the device.
 
+## User guide and release notes
+
+- [User guide](docs/user-guide.md): everything BlindScan does and how to use it.
+- [Release notes](docs/release-notes.md): what's new in each version.
+
+Both are also in the app: the Help tab shows the guide, and buttons at the very top of it open
+the guide and the release notes in your browser.
+
 ## What's in this first version
 
 - **Four tabs** across the bottom: Live mode, Scan document, Help, Settings.

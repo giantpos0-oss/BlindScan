@@ -1,0 +1,82 @@
+# BlindScan release notes
+
+The newest version is at the top. Each version has its own heading, so you can jump between them with your screen reader's heading navigation.
+
+## Version 0.2.13
+
+- New: a full user guide. It's on the Help tab, and the Open user guide in browser button at the very top opens it in Chrome or your usual browser.
+- New: Open release notes in browser, also at the very top of the Help tab, opens this list of changes.
+- The guide and these notes are kept up to date with every new version.
+
+## Version 0.2.12
+
+- Big captions under photos are no longer marked as headings. Big type only counts as a heading when its text follows close below it.
+
+## Version 0.2.11
+
+- Fixed scans sometimes coming back with "No text found", and a crash, while a page was still being read.
+- If arranging a page into paragraphs ever goes wrong, every line that was read is still given to you.
+
+## Version 0.2.9
+
+- Headlines in big type, and titles printed right over their text, become real headings you can jump between with your screen reader.
+- Saved Word, PDF, web page, Markdown and e-book files keep those headings.
+- Help brought up to date.
+
+## Version 0.2.8
+
+- Faster reading, and speech starts sooner.
+- With the light on, BlindScan quickly checks whether the photo with the light or without it shows more text, then reads only that one, speaking as it goes.
+- New: Save to device as plain text, Word, PDF, web page, Markdown or e-book.
+
+## Version 0.2.7
+
+- Settings are grouped: choose a group to see its settings.
+- A Navigate up button at the top left of every screen except Live mode.
+- With your screen reader, each part of a page is spoken as soon as it's recognised.
+- New: Import image or PDF, and share or open pictures and PDFs with BlindScan from other apps.
+
+## Version 0.2.6
+
+- Timelines: each year is read just before its entry.
+- An article beside a photo is no longer mixed up with writing in the photo.
+
+## Version 0.2.5
+
+- Better paragraphs and columns across many kinds of page: letters, sidebars, maps, picture labels and tables.
+
+## Version 0.2.4
+
+- Columns are read one at a time and never joined across the gap.
+- Big decorative first letters are joined back onto their word. Headlines stay with the main text; picture labels, captions and page numbers are read last.
+- With the light on, a second photo is taken with the light off, in case the light glared on shiny paper.
+
+## Version 0.2.3
+
+- Pages are read in proper layout order: top to bottom, columns left to right.
+- Each unsure line is read a second way and the more confident reading wins.
+- If pressing Scan knocks the page out of view or tips the phone, BlindScan tells you how to fix it before taking the picture.
+
+## Version 0.2.2
+
+- Text comes out as natural, flowing paragraphs, with hyphenated words put back together.
+- Tilted pages no longer mix up lines.
+- Positioning prompts no longer pile up.
+- Steady capture: BlindScan waits for a still moment, and retakes the picture if your hand moved.
+
+## Version 0.2.1
+
+- Fixed a crash when scanning.
+- Calmer positioning prompts: one movement at a time, with time to act.
+- If BlindScan closes unexpectedly, you can share the crash report from Settings.
+- Updates now install over the old version.
+
+## Version 0.2.0
+
+- Faster reading.
+- Unclear words are corrected with an English dictionary. Numbers are never changed.
+- New: batch scanning, Add another page, press the Scan document tab again to start fresh, and Share scan for testing.
+
+## Version 0.1.0
+
+- The first version: Live mode, Scan document with spoken positioning prompts, reading with your screen reader or with DVR controls, Document actions, and volume buttons to take the picture.

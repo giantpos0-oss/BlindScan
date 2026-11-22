@@ -1,144 +1,151 @@
 package com.willwalsh.blindscan.ui
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.willwalsh.blindscan.LocalSettings
+import com.willwalsh.blindscan.Voice
 
-private val HELP = listOf(
-    "Welcome" to listOf(
-        "BlindScan turns print into speech. Everything happens on your phone. The app has no internet " +
-            "access at all, so nothing you scan ever leaves the device, and it is free.",
-        "There are four tabs along the bottom of the screen: Live mode, Scan document, Help, and Settings.",
-        "At the top left of every screen except Live mode is a Navigate up button. On a document it goes back " +
-            "to the camera; in a settings group it goes back to the list of settings; elsewhere it goes to Live mode.",
-        "Settings are grouped. Choose a group, such as Speech or Camera and positioning, to see its settings.",
-    ),
-    "Live mode" to listOf(
-        "Point the camera at anything with words on it: a package, a sign, a screen, a letter. As soon as the " +
-            "text is steady in view, it is read out. Move to something new and the new text is read.",
-        "The controls work like a DVR. Rewind goes back one sentence. Play and Pause starts and stops speech. " +
-            "Fast forward skips ahead one sentence. Using any of them pauses live reading, so new text doesn't " +
-            "interrupt you while you go back over something. Press Resume live reading to carry on.",
-        "Light on turns on the phone's flashlight. In dim places the light comes on by itself (you can turn " +
-            "that off in Settings, Camera and positioning).",
-    ),
-    "Scan document" to listOf(
-        "Use this for letters, bills, menus, labels and pages of a book. Lay the page on a table, hold the " +
-            "phone flat with the screen facing up, about a foot above the page, top of the phone pointing away from you.",
-        "The app talks you into position. Follow the prompts until you hear \"Ready. All the text is in view\" " +
-            "and feel a double buzz, then press Scan document now, or press either volume button.",
-        "Check view gives a full report whenever you want one: roughly how many lines of text it can see, " +
-            "whether any text runs off an edge, whether the page's edges are visible, and the lighting.",
-        "Open last document brings back your most recent scan.",
-        "To keep a document, choose Save to device as from Document actions, then pick a format: plain text, " +
-            "Word (DOCX), PDF, web page (HTML), Markdown, or e-book (EPUB). Headings are kept (see Headings).",
-        "Import image or PDF reads pictures and scanned PDF files already on your phone: choose one or " +
-            "several files. Every page of a PDF is read, one after another, into one document. You can also " +
-            "share a picture or PDF to BlindScan from another app, such as Files, Photos or your email.",
-        "To clear a scan and start fresh, press the Scan document tab again, even while a document is showing. " +
-            "Everything you scanned is cleared, ready for a new page.",
-    ),
-    "Shaky hands welcome" to listOf(
-        "No stand needed. When you press Scan document now or a volume button, BlindScan waits for a " +
-            "steady moment (at most two and a half seconds) and takes the picture right then. If your hand " +
-            "moved while the picture was being taken, it quietly takes a second one and keeps the sharper.",
-        "If pressing the button tips the phone or knocks the page out of view, BlindScan tells you how to " +
-            "fix it and takes the picture once you've settled again.",
-        "Glossy paper can reflect the phone's light and wash out words. Whenever the light is on during a " +
-            "scan, BlindScan also takes a picture with the light off, quickly checks which picture shows more " +
-            "text, and reads that one. " +
-            "If words still go missing on a shiny page, tilt the page slightly away from overhead lights.",
-        "Positioning prompts come one movement at a time. After each one there's time to move before the next.",
-    ),
-    "Columns, headlines and pictures" to listOf(
-        "Pages with two or more columns are read one column at a time, top to bottom, left to right. " +
-            "Headlines come first. Labels on pictures, captions and page numbers are read after the main text, " +
-            "so they don't interrupt it. A big decorative first letter is joined back onto its word.",
-        "A title printed over a short piece of text, like each year on a timeline, is read just before that text.",
-    ),
-    "Headings" to listOf(
-        "Headlines in big type, and titles printed right over their text (such as a year on a timeline or " +
-            "Mains on a menu), become headings. On the document screen they are real headings, so you can " +
-            "jump between them with your screen reader's heading navigation.",
-        "When you save as Word, PDF, web page, Markdown or e-book, those headings are saved as headings too: " +
-            "the document title is the main heading, then a heading for each page if there are several, then " +
-            "the headings found on the page.",
-        "Bold text that is the same size as the text around it can't be told apart from ordinary text yet, so " +
-            "a small bold subheading may come out as an ordinary paragraph.",
-    ),
-    "Fast results" to listOf(
-        "As soon as you scan, the document opens and the first lines are read out while the rest of the page " +
-            "is still being read. With Android text to speech the controls work straight away. With a screen " +
-            "reader, each part is spoken the moment it is recognised, the same moment it appears on screen.",
-    ),
-    "Several pages" to listOf(
-        "Batch scanning: turn on the Batch scanning switch on the Scan document tab. Scan each page in turn; " +
-            "you'll hear \"Page 1 captured\", \"Page 2 captured\" and so on, and each page is read in the " +
-            "background while you turn to the next one. When you're done, press Read pages. The pages open as " +
-            "one document, with a heading for each page so you can jump between them.",
-        "Adding a page to a document you've already scanned: choose Add another page from Document actions, " +
-            "then scan. The new page is read on its own, then added to the document.",
-    ),
-    "Unclear words" to listOf(
-        "When a word comes out unclear, BlindScan compares what it saw with similar English words and fixes " +
-            "the word only when the evidence is clearly better. Numbers are never changed into other numbers, " +
-            "and words it read confidently, like names, are left alone. You can turn this off in Settings, Accuracy and speed.",
-    ),
-    "What the positioning prompts mean" to listOf(
-        "\"Lift the phone up a little\": the text runs off both sides, so move the phone higher above the page.",
-        "\"Bring the phone a little closer to the page\": the text is small in the picture. Lower the phone toward the page.",
-        "\"Move the phone a little to the left\" or \"to the right\": slide the phone sideways, keeping it the same height.",
-        "\"Move the phone a little away from you\": slide it toward the far edge of the page, the top of the page.",
-        "\"Move the phone a little toward you\": slide it toward your body, the bottom of the page.",
-        "\"Hold the phone flatter, screen facing up\": the phone is tipped. Level it out over the page.",
-        "\"Hold still\": the picture is blurry from movement. Keep the phone steady for a moment.",
-        "\"No text in view yet\": point the camera at the page, holding it flat about a foot above it.",
-    ),
-    "Volume buttons" to listOf(
-        "While the Scan document tab is showing the camera, either volume button takes the picture, even with " +
-            "TalkBack on. On every other screen the volume buttons work normally. You can turn this off in Settings, Camera and positioning.",
-    ),
-    "Reading your document" to listOf(
-        "When a scan finishes, the text is read straight away: by your screen reader, or by Android text to " +
-            "speech with the DVR controls, whichever you chose in Settings, Reading scanned documents.",
-        "The Document actions button at the top right offers: Read aloud, Save to device as, Share text, Copy text, " +
-            "Add another page, Share scan for testing, New scan, and Discard.",
-        "With TalkBack, every paragraph also has these as actions. Set your reading control to Actions, then " +
-            "swipe up or down to pick one and double tap. Or open the TalkBack menu and choose Actions.",
-        "Save to device as asks which kind of file you want: plain text, Word (DOCX), PDF, web page (HTML), " +
-            "Markdown, or e-book (EPUB). Then choose where to save it. Share text sends the text to any app, such as email or messages.",
-        "Share scan for testing sends the original photos with a report of what was recognised, how sure the " +
-            "app was, and how long it took. It's for sending a tricky scan to the developer so the reading can be improved.",
-    ),
-    "Tips for the best results" to listOf(
-        "Flat pages read best. Smooth out folds if you can.",
-        "For small print, hold the phone a little closer, wait for Ready, and hold still while it scans.",
-        "Glossy paper can reflect the light. If a scan comes back patchy, try with the light off, or tilt the page slightly.",
-        "Upside-down and sideways pages are fine: the app turns them the right way round by itself.",
-    ),
-)
+/**
+ * The user guide and release notes live in the repository's docs folder, as Markdown:
+ * docs/user-guide.md and docs/release-notes.md. Those same files are bundled into the app
+ * (see app/build.gradle.kts), shown on this tab, and opened in the browser from GitHub,
+ * so there is only ever one copy to keep up to date.
+ */
+private const val DOCS_URL = "https://github.com/giantpos0-oss/BlindScan/blob/main/docs/"
+const val USER_GUIDE_URL = DOCS_URL + "user-guide.md"
+const val RELEASE_NOTES_URL = DOCS_URL + "release-notes.md"
 
 @Composable
 fun HelpScreen(onUp: () -> Unit) {
-    androidx.compose.foundation.layout.Column(Modifier.fillMaxSize()) {
-    TopBar("Help", onUp = onUp)
-    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        items(HELP) { (title, paragraphs) ->
-            Text(
-                title, fontSize = 22.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 16.dp, bottom = 4.dp).semantics { heading() },
+    val context = LocalContext.current
+    val settings = LocalSettings.current
+    val announcer = LocalAnnouncer.current
+    val view = LocalView.current
+    val blocks = remember { parseGuide(readAsset(context, "user-guide.md")) }
+
+    fun open(url: String) {
+        if (!openInBrowser(context, url)) {
+            announcer.say(
+                "No web browser found. The user guide is below, on this screen.",
+                view, settings.documentVoice == Voice.SCREEN_READER,
             )
-            for (p in paragraphs) Text(p, fontSize = 19.sp, modifier = Modifier.padding(vertical = 4.dp))
+        }
+    }
+
+    // A plain Column, not a lazy list, so every heading is there for heading navigation.
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
+        TopBar("Help", onUp = onUp)
+        BigButton("Open user guide in browser", onClick = { open(USER_GUIDE_URL) })
+        BigButton("Open release notes in browser", onClick = { open(RELEASE_NOTES_URL) })
+        Text(
+            "BlindScan version ${appVersion(context)}",
+            fontSize = 17.sp,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+        Column(Modifier.padding(horizontal = 16.dp)) {
+            for (b in blocks) GuideBlockView(b)
         }
     }
 }
+
+/** Opens [url] in Chrome or whichever browser is the default. False if there's no browser. */
+fun openInBrowser(context: Context, url: String): Boolean = try {
+    context.startActivity(
+        Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            .addCategory(Intent.CATEGORY_BROWSABLE)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+    )
+    true
+} catch (_: ActivityNotFoundException) {
+    false
+}
+
+private fun readAsset(context: Context, name: String): String =
+    runCatching { context.assets.open(name).bufferedReader().use { it.readText() } }
+        .getOrDefault("# Help\n\nThe user guide couldn't be loaded. Use Open user guide in browser above.")
+
+private fun appVersion(context: Context): String =
+    runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: ""
+
+/** One piece of the guide: a heading (level 1 to 3), a paragraph, or a bullet point. */
+sealed class GuideBlock {
+    data class Heading(val level: Int, val text: String) : GuideBlock()
+    data class Paragraph(val text: String) : GuideBlock()
+    data class Bullet(val text: String) : GuideBlock()
+}
+
+/**
+ * Reads the simple Markdown the guide is written in: # headings, - bullet points, and
+ * paragraphs separated by blank lines. Bold markers, code marks and link syntax are dropped
+ * so screen readers don't speak them.
+ */
+fun parseGuide(markdown: String): List<GuideBlock> {
+    val out = ArrayList<GuideBlock>()
+    val para = StringBuilder()
+    fun flush() {
+        if (para.isNotBlank()) out.add(GuideBlock.Paragraph(clean(para.toString())))
+        para.clear()
+    }
+    for (raw in markdown.lines()) {
+        val line = raw.trim()
+        when {
+            line.isEmpty() -> flush()
+            line.startsWith("#") -> {
+                flush()
+                val level = line.takeWhile { it == '#' }.length
+                out.add(GuideBlock.Heading(level.coerceAtMost(3), clean(line.drop(level))))
+            }
+            line.startsWith("- ") || line.startsWith("* ") -> {
+                flush()
+                out.add(GuideBlock.Bullet(clean(line.drop(2))))
+            }
+            else -> { if (para.isNotEmpty()) para.append(' '); para.append(line) }
+        }
+    }
+    flush()
+    return out
+}
+
+private val LINK = Regex("""\[([^\]]+)]\([^)]+\)""")
+
+private fun clean(s: String): String =
+    s.replace(LINK, "$1").replace("**", "").replace("`", "").trim()
+
+@Composable
+private fun GuideBlockView(b: GuideBlock) {
+    when (b) {
+        is GuideBlock.Heading -> Text(
+            b.text,
+            fontSize = when (b.level) { 1 -> 26.sp; 2 -> 23.sp; else -> 21.sp },
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 4.dp).semantics { heading() },
+        )
+        is GuideBlock.Paragraph -> Text(b.text, fontSize = 19.sp, modifier = Modifier.padding(vertical = 4.dp))
+        is GuideBlock.Bullet -> Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+            // The bullet is for sighted and low-vision readers only; screen readers just read the text.
+            Text("•", fontSize = 19.sp, modifier = Modifier.padding(start = 4.dp, end = 10.dp).clearAndSetSemantics { })
+            Text(b.text, fontSize = 19.sp, modifier = Modifier.weight(1f))
+        }
+    }
 }

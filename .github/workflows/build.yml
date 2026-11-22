@@ -12,6 +12,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Every version must have release notes, so the guide and notes never fall behind the app.
+      - name: Check the release notes cover this version
+        run: |
+          ver=$(grep -m1 'versionName' app/build.gradle.kts | sed 's/.*"\(.*\)".*/\1/')
+          if ! grep -q "^## Version $ver\b" docs/release-notes.md; then
+            echo "::error title=Release notes missing::docs/release-notes.md has no '## Version $ver' heading. Add notes for $ver, and update docs/user-guide.md for any change people will notice."
+            exit 1
+          fi
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -70,5 +78,5 @@ jobs:
           if gh release view "v$ver" >/dev/null 2>&1; then
             gh release upload "v$ver" BlindScan.apk --clobber
           else
-            gh release create "v$ver" BlindScan.apk --title "BlindScan $ver" --notes "Install BlindScan.apk on your Android phone." --latest
+            gh release create "v$ver" BlindScan.apk --title "BlindScan $ver" --notes "Install BlindScan.apk on your Android phone. What is new: https://github.com/${{ github.repository }}/blob/main/docs/release-notes.md" --latest
           fi
