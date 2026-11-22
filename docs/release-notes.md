@@ -2,6 +2,13 @@
 
 The newest version is at the top. Each version has its own heading, so you can jump between them with your screen reader's heading navigation.
 
+## Version 0.3.1
+
+- Ask a question is now in Document actions, and in TalkBack's Actions on every paragraph, as well as the button at the bottom right.
+- Ask about several pages: after batch scanning, press Ask about pages to go straight to questions about all of them. Questions cover every page of any document.
+- If pages are still being read when you ask, BlindScan tells you and lets you ask as soon as they're done.
+- Coming back from Ask a question no longer starts reading the document again from the beginning.
+
 ## Version 0.3.0
 
 - New: Ask a question. Once you've scanned something, an Ask a question button sits at the bottom right of every screen. Type or say your question about the document.

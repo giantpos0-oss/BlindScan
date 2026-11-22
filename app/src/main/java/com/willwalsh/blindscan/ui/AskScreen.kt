@@ -58,6 +58,10 @@ object AskState {
     /** The conversation about the current document (cleared when a new document is scanned). */
     val turns = mutableStateListOf<Turn>()
     var forDocument = -1L
+    /** Documents not to start reading aloud again when you come back from asking about them. */
+    val quietDocs = HashSet<Long>()
+
+    fun openFor(docId: Long?) { if (docId != null) quietDocs.add(docId); open = true }
 }
 
 /** One question and its answer as shown on screen. */
@@ -100,9 +104,15 @@ fun AskScreen(doc: ScannedDocument, reader: Reader, announcer: Announcer, onClos
         }
     }
 
+    // Pages still being read (a batch, or a page just scanned): wait, then say it's ready.
+    val stillReading = doc.pages.any { it.reading }
+    LaunchedEffect(stillReading) {
+        if (stillReading) say("Still reading the pages. You can ask as soon as they're done.")
+    }
+
     fun ask(q: String) {
         val text = q.trim()
-        if (text.isEmpty() || job?.isActive == true) return
+        if (text.isEmpty() || job?.isActive == true || stillReading) return
         val st = status ?: return
         question = ""
         val qa = QA(text)
@@ -184,6 +194,11 @@ fun AskScreen(doc: ScannedDocument, reader: Reader, announcer: Announcer, onClos
                 )
             }
             else -> {
+                if (stillReading) {
+                    val done = doc.pages.count { !it.reading }
+                    Text("Still reading: page ${done + 1} of ${doc.pages.size}. You can ask as soon as it's done.",
+                        fontSize = 20.sp, modifier = Modifier.padding(16.dp))
+                }
                 LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp), state = listState) {
                     itemsIndexed(shown) { _, qa ->
                         Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
@@ -207,8 +222,8 @@ fun AskScreen(doc: ScannedDocument, reader: Reader, announcer: Announcer, onClos
                     keyboardActions = KeyboardActions(onSend = { ask(question) }),
                 )
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
-                    SmallButton("Ask", enabled = question.isNotBlank() && job?.isActive != true, onClick = { ask(question) })
-                    SmallButton("Say your question", enabled = job?.isActive != true, onClick = { speak() })
+                    SmallButton("Ask", enabled = question.isNotBlank() && job?.isActive != true && !stillReading, onClick = { ask(question) })
+                    SmallButton("Say your question", enabled = job?.isActive != true && !stillReading, onClick = { speak() })
                     if (job?.isActive == true) SmallButton("Stop", onClick = { job?.cancel(); reader.stopSpeaking(); say("Stopped.") })
                 }
                 Text(

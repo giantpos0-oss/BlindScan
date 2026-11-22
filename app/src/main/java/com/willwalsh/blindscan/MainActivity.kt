@@ -157,7 +157,7 @@ private fun AppRoot() {
         floatingActionButton = {
             if (askDoc != null && !com.willwalsh.blindscan.ui.AskState.open) {
                 androidx.compose.material3.ExtendedFloatingActionButton(
-                    onClick = { reader.stopSpeaking(); com.willwalsh.blindscan.ui.AskState.open = true },
+                    onClick = { reader.stopSpeaking(); com.willwalsh.blindscan.ui.AskState.openFor(askDoc.id) },
                     icon = { Icon(Icons.Filled.QuestionAnswer, contentDescription = null) },
                     text = { Text("Ask a question", fontSize = 18.sp) },
                 )

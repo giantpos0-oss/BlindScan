@@ -93,6 +93,7 @@ fun DocumentScreen(doc: ScannedDocument, onClose: () -> Unit) {
         }
     }
     val save: () -> Unit = { choosingFormat = true }
+    val askQuestion: () -> Unit = { reader.stopSpeaking(); AskState.openFor(doc.id) }
     val share: () -> Unit = {
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
@@ -124,6 +125,7 @@ fun DocumentScreen(doc: ScannedDocument, onClose: () -> Unit) {
 
     val a11yActions = listOf(
         CustomAccessibilityAction(if (readerState.playing) "Pause reading" else "Read aloud") { readAloud(); true },
+        CustomAccessibilityAction("Ask a question") { askQuestion(); true },
         CustomAccessibilityAction("Save to device as") { save(); true },
         CustomAccessibilityAction("Share text") { share(); true },
         CustomAccessibilityAction("Copy text") { copy(); true },
@@ -141,12 +143,14 @@ fun DocumentScreen(doc: ScannedDocument, onClose: () -> Unit) {
     val streamer = remember(doc.id, doc.readFrom) { StreamChunker() }
     var announced by remember(doc.id, doc.readFrom) { mutableStateOf(false) }
     LaunchedEffect(doc.id, doc.readFrom) {
+        if (doc.id in AskState.quietDocs) return@LaunchedEffect // back from asking: not read again
         if (settings.documentVoice == Voice.TEXT_TO_SPEECH) {
             reader.rate = settings.speechRate
             reader.startStream(autoPlay = true)
         } else reader.clear()
     }
     LaunchedEffect(doc.id, doc.readFrom, doc.revision) {
+        if (doc.id in AskState.quietDocs) return@LaunchedEffect
         // Scan and ask: the page isn't read aloud; Ask a question opens as soon as it's read.
         if (AskState.afterScan) {
             if (!doc.reading) return@LaunchedEffect
@@ -205,6 +209,7 @@ fun DocumentScreen(doc: ScannedDocument, onClose: () -> Unit) {
                 }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     MenuItem(if (readerState.playing) "Pause reading" else "Read aloud") { menuOpen = false; readAloud() }
+                    MenuItem("Ask a question") { menuOpen = false; askQuestion() }
                     MenuItem("Save to device as") { menuOpen = false; save() }
                     MenuItem("Share text") { menuOpen = false; share() }
                     MenuItem("Copy text") { menuOpen = false; copy() }

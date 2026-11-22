@@ -255,7 +255,7 @@ private fun ScanCamera(onUp: () -> Unit) {
                 } else {
                     DocumentStore.updateLastPage(docId) { page.copy(key = it.key) }
                     // Scan and ask: the page is read, so go straight to the question.
-                    if (AskState.afterScan) { AskState.afterScan = false; reader.stopSpeaking(); AskState.open = true }
+                    if (AskState.afterScan) { AskState.afterScan = false; reader.stopSpeaking(); AskState.openFor(docId) }
                 }
                 if (page.paragraphs.isEmpty()) AskState.afterScan = false
                 ScanPhotos.tidy(context)
@@ -302,7 +302,7 @@ private fun ScanCamera(onUp: () -> Unit) {
         }
     }
 
-    fun finishBatch() {
+    fun finishBatch(askAfter: Boolean = false) {
         if (DocumentStore.batch.isEmpty()) return
         scope.launch {
             if (DocumentStore.batch.any { it.reading }) {
@@ -320,8 +320,11 @@ private fun ScanCamera(onUp: () -> Unit) {
             }
             if (skipped > 0) say("$skipped ${if (skipped == 1) "page had" else "pages had"} no text and ${if (skipped == 1) "was" else "were"} left out.")
             val d = ScannedDocument(pages)
+            // Ask about these pages: go straight to the question instead of reading them aloud.
+            if (askAfter) AskState.quietDocs.add(d.id)
             DocumentStore.open = d; DocumentStore.last = d
             if (settings.vibration) vibrate(context, READY_BUZZ)
+            if (askAfter) { reader.stopSpeaking(); AskState.open = true }
         }
     }
 
@@ -400,6 +403,10 @@ private fun ScanCamera(onUp: () -> Unit) {
             BigButton(
                 "Read ${batch.size} ${if (batch.size == 1) "page" else "pages"}",
                 onClick = { finishBatch() }, enabled = !busy,
+            )
+            BigButton(
+                "Ask about ${batch.size} ${if (batch.size == 1) "page" else "pages"}",
+                onClick = { finishBatch(askAfter = true) }, enabled = !busy,
             )
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {

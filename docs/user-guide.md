@@ -101,7 +101,9 @@ Turn on the Batch scanning switch on the Scan document tab. The big button becom
 
 Scan each page in turn. You'll hear "Page 1 captured", "Page 2 captured" and so on, and each page is read in the background while you turn to the next one.
 
-When you're done, press Read pages. The pages open as one document, with a heading for each page so you can jump between them. A page with no text on it is left out, and BlindScan tells you so.
+When you're done, press Read pages (it says how many, like Read 3 pages). The pages open as one document, with a heading for each page so you can jump between them. A page with no text on it is left out, and BlindScan tells you so.
+
+To ask about the pages instead of hearing them read, press Ask about pages (it also says how many, like Ask about 3 pages). The pages become one document and Ask a question opens straight away. Questions cover every page, so you can ask things like "what's the total on the last page" or "which page has the due date".
 
 ### Adding a page to a document
 
@@ -143,6 +145,7 @@ Bold text that is the same size as the text around it can't be told apart from o
 The Document actions button at the top right of the document offers:
 
 - Read aloud (Pause reading while it's reading)
+- Ask a question
 - Save to device as
 - Share text
 - Copy text
@@ -178,7 +181,9 @@ Share scan for testing sends the original photos with a report of what was recog
 
 Ask anything about the document you scanned, like: what's the total, when is it due, who is this letter from, which dishes are vegetarian.
 
-- Press Ask a question at the bottom right of any screen. It asks about the document that's showing, or else the one you scanned most recently.
+- Press Ask a question at the bottom right of any screen, or choose Ask a question from Document actions, or from TalkBack's Actions on any paragraph. It asks about the document that's showing, or else the one you scanned most recently.
+- Documents with several pages work the same way: batch scans, added pages and imported PDFs. If pages are still being read, you'll hear "Still reading the pages. You can ask as soon as they're done."
+- When you go back from Ask a question to the document, it isn't read aloud again from the start. Choose Read aloud if you want to hear it.
 - Type your question in the Your question box and press Ask, or press Say your question and speak it.
 - You'll hear "Looking." Then you hear the answer, followed by "The document says:" and the exact words from the page that back it up. Both are also shown on screen.
 - Ask follow-up questions, like "and when is it due?". It remembers your last couple of questions.
