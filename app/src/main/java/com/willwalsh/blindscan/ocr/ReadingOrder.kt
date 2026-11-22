@@ -187,8 +187,12 @@ object ReadingOrder {
             // (Upper quartile, not the middle: a short column's paragraph ends and title are short.)
             fun proseLike(widths: List<Float>, heights: List<Float>) =
                 widths.sorted()[(widths.size * 3) / 4] >= 8f * median(heights)
-            val gutter = proseLike(run.map { extU[it.leftPiece] }, run.map { hs[it.leftPiece] }) &&
-                proseLike(run.map { extU[it.rightPiece] }, run.map { hs[it.rightPiece] })
+            // Prose on either side is a column beside something else (an article beside a photo's
+            // handwritten list of names, a timeline entry beside the next), not a table.
+            val proseL = proseLike(run.map { extU[it.leftPiece] }, run.map { hs[it.leftPiece] })
+            val proseR = proseLike(run.map { extU[it.rightPiece] }, run.map { hs[it.rightPiece] })
+            val wideGap = median(run.map { (it.to - it.from) / hs[it.leftPiece] }) > 12f
+            val gutter = (proseL && proseR) || ((proseL || proseR) && wideGap)
             for (g in run) gapKind[g] = gutter
         }
         // A column gutter blocks any joining across it on other rows too (a short word like
@@ -210,7 +214,9 @@ object ReadingOrder {
                     val h = max(hs[prev], hs[i])
                     val g = gapAt[prev.toLong() * 1_000_003L + i]
                     val sizeDiffers = max(hs[prev], hs[i]) > 1.2f * min(hs[prev], hs[i])
-                    if (g == null) join = true // pieces touch or nearly touch: same line
+                    // Pieces that touch or nearly touch are one line, unless the type is far apart in
+                    // size (a big year heading beside a timeline entry's text).
+                    if (g == null) join = max(hs[prev], hs[i]) <= 1.6f * min(hs[prev], hs[i])
                     else {
                         val crossesGutter = gutterSpans.any { (from, to) -> g.from < to && g.to > from }
                         when (if (crossesGutter) true else gapKind[g]) {
@@ -325,17 +331,32 @@ object ReadingOrder {
         // Scraps: a line or two of short text in ordinary-size type. Big, wide type is a headline
         // and stays with the main text; a big short word (on a sign or drum in a photo) is a scrap.
         // A short line just above the text it overlaps is a title ("Dinner", "Mains"), not a scrap.
-        fun titleOver(b: Block) = blocks.any { o ->
-            o !== b && o.lines.size >= 2 && o.top > b.bottom && o.top - b.bottom < 3f * b.lines.maxOf { it.h } &&
-                min(o.right, b.right) - max(o.left, b.left) > 0 &&
-                b.lines.maxOf { it.h } >= 0.9f * median(o.lines.map { it.h }) // a title isn't smaller than its text
+        fun titled(b: Block): Block? {
+            if (b.lines.size > 2) return null
+            // The nearest block below it (nothing else, such as a subtitle, in between)...
+            val o = blocks.filter { o ->
+                o !== b && o.top > (b.top + b.bottom) / 2 && min(o.right, b.right) - max(o.left, b.left) > 0
+            }.minByOrNull { it.top } ?: return null
+            // ...close below, with a few lines of text no bigger than the title.
+            return if (o.lines.size >= 2 && o.top - b.bottom < 3f * b.lines.maxOf { it.h } &&
+                b.lines.maxOf { it.h } >= 0.9f * median(o.lines.map { it.h })) o else null
         }
+        val titleOf = HashMap<Block, Block>()
+        for (b in blocks) titled(b)?.let { titleOf[b] = it }
+        fun titleOver(b: Block) = b in titleOf
         val isSmall = { b: Block ->
             val headline = b.lines.maxOf { it.h } > 1.3f * typicalH && (b.right - b.left) > 8f * typicalH
-            b.lines.size <= 2 && b.chars < 40 && !headline && b.lines.none { it.tableRow } && !titleOver(b)
+            b.lines.size <= 2 && b.chars < 40 && !headline && b.lines.none { it.tableRow } && !titleOver(b) &&
+                b !in titleOf.values // text with its own title (a timeline entry) is part of the page
         }
         val main = order(blocks.filterNot(isSmall)); val scraps = order(blocks.filter(isSmall))
-        val ordered = main + scraps
+        val ordered = ArrayList(main + scraps)
+        // A title is read just before the text it heads (a year over each entry of a timeline).
+        for ((t, target) in titleOf) {
+            if (titleOf.containsKey(target)) continue
+            if (t.right - t.left > 1.2f * (target.right - target.left)) continue // a headline over several columns stays first
+            ordered.remove(t); ordered.add(ordered.indexOf(target).coerceAtLeast(0), t)
+        }
 
         val rows = ArrayList<Row>()
         // Reading order inside a block: by row, then left to right (pieces of one printed line split
@@ -361,7 +382,7 @@ object ReadingOrder {
             for (ln in sorted) {
                 val lineItems = ln.items.sortedBy { if (it == ln.dropCap) -Float.MAX_VALUE else us[it] }
                 rows.add(Row(ln.ownV, ln.h, ln.left, ln.right, lineItems, bi, blk.left, blk.right, ln.dropCap, ln.tableRow,
-                    pitch, sorted.size, fullShare, rightAligned, longLines, bi >= main.size))
+                    pitch, sorted.size, fullShare, rightAligned, longLines, blk in scraps))
             }
         }
         return Layout(rows, typicalH, tilt)
@@ -468,6 +489,29 @@ object ReadingOrder {
             return median(lefts)
         }
 
+        // A narrow block of short lines that reads as one sentence or so: only its last line ends with
+        // a full stop (a timeline entry: "Robert G. Smith / became the second / Lumberjack Band /
+        // director."). Its lines simply wrapped. An address, a list or a heading over text has a
+        // line ending early with no sentence end, or a colon, or an item marker.
+        val flowing = HashSet<Int>()
+        run {
+            val byBlock = layout.rows.indices.filter { rowTexts.getOrNull(it)?.isNotBlank() == true }.groupBy { layout.rows[it].block }
+            for ((b, idx) in byBlock) {
+                if (idx.size < 2 || idx.size > 8) continue
+                val texts = idx.map { rowTexts[it].trim() }
+                val rs = idx.map { layout.rows[it] }
+                if (!endsSentence(texts.last())) continue
+                if (texts.dropLast(1).any { endsSentence(it) || it.endsWith(",") }) continue
+                if (texts.any { startsItem(it) } || rs.any { it.tableRow }) continue
+                val hMed = median(rs.map { it.h })
+                if (rs.any { abs(it.h - hMed) > 0.15f * hMed }) continue
+                // Lines of a column, each reaching near the block's right edge (but the last).
+                if (rs.dropLast(1).any { it.right < it.blockRight - 0.4f * (it.blockRight - it.blockLeft) }) continue
+                if (rs.any { abs(it.left - rs[0].left) > 1.5f * hMed }) continue
+                flowing.add(b)
+            }
+        }
+
         var last = -1
         for (i in rowTexts.indices) {
             val text = rowTexts[i].trim()
@@ -523,6 +567,7 @@ object ReadingOrder {
                         text.lastOrNull()?.isDigit() == true && prevText.lastOrNull()?.isDigit() != true &&
                             rowTexts.getOrNull(i + 1)?.trim()?.lastOrNull()?.isDigit() == true &&
                             (text.first().isUpperCase() || text.first().isDigit()) -> true
+                        prev.block in flowing && !gap -> false // (box heights vary with capitals and descenders)
                         sizeChange -> true
                         gap -> true
                         indented && endsSentence(prevText) -> true
