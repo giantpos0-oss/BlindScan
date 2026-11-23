@@ -2,6 +2,10 @@
 
 The newest version is at the top. Each version has its own heading, so you can jump between them with your screen reader's heading navigation.
 
+## Version 0.4.1
+
+- Better paragraph breaks on pages with lots of short, indented paragraphs, like letters and notices where each paragraph is one or two lines.
+
 ## Version 0.4.0
 
 - Ask a question now works on every phone, with no account or key. BlindScan's online AI answers when the phone's built-in AI isn't available, including on rooted phones.

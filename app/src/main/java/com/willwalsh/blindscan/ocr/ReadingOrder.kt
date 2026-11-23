@@ -528,7 +528,10 @@ object ReadingOrder {
             val lefts = ArrayList<Float>()
             for (k in max(0, at - 3)..min(layout.rows.size - 1, at + 3))
                 if (layout.rows[k].block == b && rowTexts.getOrNull(k)?.isNotBlank() == true) lefts.add(layout.rows[k].left)
-            return median(lefts)
+            // The lower quarter, not the middle: when most nearby paragraphs are a single indented
+            // line, the middle left edge is the indent itself.
+            if (lefts.size < 4) return median(lefts)
+            return lefts.sorted()[(lefts.size - 1) / 4]
         }
 
         // A narrow block of short lines that reads as one sentence or so: only its last line ends with
