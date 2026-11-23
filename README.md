@@ -1,8 +1,8 @@
 # BlindScan
 
 A free Android document scanner and live text reader, made by a blind person for blind people.
-Everything runs on the phone. Nothing you scan leaves the device, unless you choose to turn on the optional cloud AI for Ask a question
-(off by default, with your own key). Otherwise questions are answered by the phone's built-in AI.
+Everything runs on the phone. Reading happens on the device. The only thing that goes online is Ask a question with BlindScan's online AI
+(tools/blindscan-ai in the Voice Companion repository): the document asked about is sent to it and to OpenAI to answer.
 
 ## User guide and release notes
 

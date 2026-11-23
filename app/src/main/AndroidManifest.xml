@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- All reading happens on the phone. Internet is used for one thing only: the optional cloud AI
-         for Ask a question, which is off until you set it up with your own key. With it off, nothing
-         you scan ever leaves the phone. -->
+    <!-- All reading happens on the phone. Internet is used for one thing only: Ask a question with
+         BlindScan's online AI, which answers questions about the document you ask about. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.VIBRATE" />

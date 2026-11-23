@@ -2,6 +2,13 @@
 
 The newest version is at the top. Each version has its own heading, so you can jump between them with your screen reader's heading navigation.
 
+## Version 0.4.0
+
+- Ask a question now works on every phone, with no account or key. BlindScan's online AI answers when the phone's built-in AI isn't available, including on rooted phones.
+- For a one-page document, the online AI also looks at the photo, to catch words the camera misread. If the photo shows something different, you hear "Please check:" and what it shows.
+- The cloud AI with your own key is gone; you don't need one any more.
+- Settings, Ask a question: choose Automatic, BlindScan's online AI, or Phone's built-in AI only.
+
 ## Version 0.3.2
 
 - Fixed: pages held upside down were sometimes read as gibberish instead of being turned the right way round. BlindScan now reads a few lines both ways round and keeps whichever makes sense, which works far better on small print.

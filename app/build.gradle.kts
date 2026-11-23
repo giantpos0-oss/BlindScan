@@ -12,8 +12,8 @@ android {
         applicationId = "com.willwalsh.blindscan"
         minSdk = 26
         targetSdk = 35
-        versionCode = 18
-        versionName = "0.3.2"
+        versionCode = 19
+        versionName = "0.4.0"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
 

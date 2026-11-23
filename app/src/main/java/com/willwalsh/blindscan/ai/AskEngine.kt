@@ -8,7 +8,6 @@ import com.google.mlkit.genai.prompt.SystemInstruction
 import com.google.mlkit.genai.prompt.TextPart
 import com.google.mlkit.genai.prompt.generateContentRequest
 import com.willwalsh.blindscan.AskEngineChoice
-import com.willwalsh.blindscan.CloudProvider
 import com.willwalsh.blindscan.Settings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -25,10 +24,8 @@ sealed class AskStatus {
     data object BuiltInDownloadable : AskStatus()
     /** Android is fetching the built-in AI model now. */
     data object BuiltInDownloading : AskStatus()
-    /** The cloud AI you set up will answer (the document's text is sent to it). */
-    data class CloudReady(val provider: CloudProvider) : AskStatus()
-    /** Nothing can answer: no built-in AI, and no cloud AI set up (or it was chosen and isn't set up). */
-    data class NoneAvailable(val builtInExists: Boolean) : AskStatus()
+    /** BlindScan's online AI will answer (the document's text and photo go to it). */
+    data object OnlineReady : AskStatus()
 }
 
 /** One earlier question and its answer, so follow-up questions make sense ("and the total?"). */
@@ -42,6 +39,8 @@ data class Answer(
     val quote: String,
     /** True when the document doesn't hold the answer, or the AI's answer couldn't be confirmed. */
     val notFound: Boolean,
+    /** When the photo shows something different from the scanned text (a misread), what it says. */
+    val photoNote: String = "",
 )
 
 /**
@@ -101,84 +100,96 @@ object AskEngine {
         return client.generateContent(request).candidates.firstOrNull()?.text ?: ""
     }
 
-    // ------------------------------------------------------------ cloud AI (your own key)
+    // ------------------------------------------------------------ BlindScan's online AI
 
-    private const val CLAUDE_MODEL = "claude-haiku-5-5"
-    private const val GEMINI_MODEL = "gemini-3.5-flash-lite"
+    /** BlindScan's own AI service: holds the key, so nobody needs one (see tools/blindscan-ai). */
+    private const val SERVICE = "https://blindscan-ai.voicecompanionapp.com/v1/ask"
 
-    private fun post(url: String, headers: Map<String, String>, body: JSONObject): JSONObject {
-        val c = URL(url).openConnection() as HttpURLConnection
+    class ServiceError(val code: Int, val error: String) : Exception("HTTP $code: $error")
+
+    private fun askOnline(context: android.content.Context, document: String, history: List<Turn>, question: String, photo: java.io.File?): String {
+        val body = JSONObject()
+            .put("document", document.take(190000))
+            .put("question", question.take(1900))
+            .put("history", JSONArray().apply {
+                for (t in history.takeLast(2)) put(JSONObject().put("question", t.question.take(1900)).put("answer", t.answer.take(900)))
+            })
+        photoData(photo)?.let { body.put("image", it) }
+        val c = URL(SERVICE).openConnection() as HttpURLConnection
         try {
             c.requestMethod = "POST"
-            c.connectTimeout = 15000; c.readTimeout = 45000
+            c.connectTimeout = 15000; c.readTimeout = 90000
             c.doOutput = true
             c.setRequestProperty("content-type", "application/json")
-            for ((k, v) in headers) c.setRequestProperty(k, v)
+            c.setRequestProperty("X-BlindScan-Install", installId(context))
+            c.setRequestProperty("X-BlindScan-Version",
+                runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "")
             c.outputStream.use { it.write(body.toString().toByteArray()) }
             val code = c.responseCode
             val text = (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() } ?: ""
-            if (code !in 200..299) throw CloudError(code, text)
-            return JSONObject(text)
+            val r = runCatching { JSONObject(text) }.getOrNull()
+            if (code !in 200..299 || r == null || !r.optBoolean("ok")) throw ServiceError(code, r?.optString("error") ?: text.take(200))
+            return r.optString("text")
         } finally { c.disconnect() }
     }
 
-    class CloudError(val code: Int, body: String) : Exception("HTTP $code: ${body.take(300)}")
+    /** The page photo, made small enough to send quickly (longest side 2000 pixels, JPEG). */
+    private fun photoData(file: java.io.File?): String? = try {
+        if (file == null || !file.exists()) null else {
+            val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeFile(file.path, opts)
+            var sample = 1
+            while (maxOf(opts.outWidth, opts.outHeight) / (sample * 2) >= 2000) sample *= 2
+            val bmp = android.graphics.BitmapFactory.decodeFile(file.path, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+            val scale = 2000f / maxOf(bmp.width, bmp.height)
+            val small = if (scale < 1f) android.graphics.Bitmap.createScaledBitmap(bmp, (bmp.width * scale).toInt(), (bmp.height * scale).toInt(), true) else bmp
+            val out = java.io.ByteArrayOutputStream()
+            small.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out)
+            if (small !== bmp) small.recycle(); bmp.recycle()
+            "data:image/jpeg;base64," + android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+        }
+    } catch (_: Throwable) { null }
 
-    private fun askCloud(provider: CloudProvider, key: String, prompt: String): String = when (provider) {
-        CloudProvider.CLAUDE -> {
-            val body = JSONObject()
-                .put("model", CLAUDE_MODEL)
-                .put("max_tokens", 400)
-                .put("system", SYSTEM)
-                .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", prompt)))
-            val r = post("https://api.anthropic.com/v1/messages",
-                mapOf("x-api-key" to key, "anthropic-version" to "2023-06-01"), body)
-            val parts = r.getJSONArray("content")
-            buildString { for (i in 0 until parts.length()) parts.getJSONObject(i).optString("text").let { append(it) } }
-        }
-        CloudProvider.GEMINI -> {
-            val body = JSONObject()
-                .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", SYSTEM))))
-                .put("contents", JSONArray().put(JSONObject().put("role", "user")
-                    .put("parts", JSONArray().put(JSONObject().put("text", prompt)))))
-            val r = post("https://generativelanguage.googleapis.com/v1beta/models/$GEMINI_MODEL:generateContent",
-                mapOf("x-goog-api-key" to key), body)
-            val parts = r.getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts")
-            buildString {
-                for (i in 0 until parts.length()) {
-                    val p = parts.getJSONObject(i)
-                    if (!p.optBoolean("thought")) append(p.optString("text"))
-                }
-            }
-        }
+    /** A random id for this installed copy (not tied to you or the phone). */
+    private fun installId(context: android.content.Context): String {
+        val prefs = context.getSharedPreferences("ask", android.content.Context.MODE_PRIVATE)
+        prefs.getString("install", null)?.let { return it }
+        val id = java.util.UUID.randomUUID().toString().replace("-", "")
+        prefs.edit().putString("install", id).apply()
+        return id
     }
 
     // ------------------------------------------------------------ choosing
 
+    /**
+     * The phone's built-in AI when it's ready and chosen; otherwise BlindScan's online AI, which
+     * works on every phone (rooted ones included) and needs no key.
+     */
     suspend fun status(settings: Settings): AskStatus {
-        val cloudSetUp = settings.cloudOn && settings.cloudKey.isNotBlank()
-        if (settings.askEngine == AskEngineChoice.CLOUD) {
-            return if (cloudSetUp) AskStatus.CloudReady(settings.cloudProvider) else AskStatus.NoneAvailable(nanoStatus() != FeatureStatus.UNAVAILABLE)
-        }
+        if (settings.askEngine == AskEngineChoice.ONLINE) return AskStatus.OnlineReady
         val n = nanoStatus()
         return when {
             n == FeatureStatus.AVAILABLE -> AskStatus.BuiltInReady
-            settings.askEngine == AskEngineChoice.AUTOMATIC && cloudSetUp && n == FeatureStatus.UNAVAILABLE ->
-                AskStatus.CloudReady(settings.cloudProvider)
-            n == FeatureStatus.DOWNLOADING -> AskStatus.BuiltInDownloading
-            n == FeatureStatus.DOWNLOADABLE -> AskStatus.BuiltInDownloadable
-            else -> AskStatus.NoneAvailable(false)
+            settings.askEngine == AskEngineChoice.BUILT_IN && n == FeatureStatus.DOWNLOADING -> AskStatus.BuiltInDownloading
+            settings.askEngine == AskEngineChoice.BUILT_IN && n == FeatureStatus.DOWNLOADABLE -> AskStatus.BuiltInDownloadable
+            else -> AskStatus.OnlineReady
         }
     }
 
     /** Answers [question] about [document], checked against the document. */
-    suspend fun answer(settings: Settings, status: AskStatus, document: String, history: List<Turn>, question: String): Answer =
-        withContext(Dispatchers.IO) {
-            val cloud = status is AskStatus.CloudReady
-            val prompt = buildPrompt(document, history, question, if (cloud) 60000 else 7000)
-            val raw = if (status is AskStatus.CloudReady) askCloud(status.provider, settings.cloudKey, prompt) else askBuiltIn(prompt)
+    suspend fun answer(
+        context: android.content.Context, status: AskStatus, document: String, history: List<Turn>, question: String,
+        photos: List<java.io.File>,
+    ): Answer = withContext(Dispatchers.IO) {
+        if (status == AskStatus.OnlineReady) {
+            // One photo goes with the text: the first page's for a one-page document. For several
+            // pages the text alone is sent (sending every page's photo would be slow).
+            val raw = askOnline(context, document, history, question, photos.singleOrNull())
             check(raw, document)
+        } else {
+            check(askBuiltIn(buildPrompt(document, history, question, 7000)), document)
         }
+    }
 
     // ------------------------------------------------------------ checking the answer
 
@@ -206,7 +217,9 @@ object AskEngine {
         val cleaned = raw.replace(Regex("\\*\\*|__|`"), "")
         val ans = Regex("(?is)ANSWER:\\s*(.*?)(?:\\n\\s*QUOTE:|$)").find(cleaned)?.groupValues?.get(1)?.trim()
             ?: cleaned.substringBefore("QUOTE:").trim()
-        val quote = Regex("(?is)QUOTE:\\s*(.*)$").find(cleaned)?.groupValues?.get(1)?.trim()?.trim('"', '“', '”') ?: ""
+        val quote = Regex("(?is)QUOTE:\\s*(.*?)(?:\\n\\s*CHECK:|$)").find(cleaned)?.groupValues?.get(1)?.trim()?.trim('"', '“', '”') ?: ""
+        val photoCheck = Regex("(?is)CHECK:\\s*(.*)$").find(cleaned)?.groupValues?.get(1)?.trim() ?: ""
+        val photoNote = if (photoCheck.isBlank() || photoCheck.trimEnd('.').equals("OK", true)) "" else photoCheck
         val doesntSay = ans.contains("doesn't say", true) || ans.contains("does not say", true) ||
             quote.equals("NONE", true) || quote.isBlank()
         if (doesntSay) return Answer("The document doesn't say.", "", true)
@@ -222,7 +235,7 @@ object AskEngine {
         val months = Regex("(?i)(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?\\s*$")
         val numbersOk = Regex("\\d[\\d,.:/-]*\\d|\\d").findAll(ans).all { m ->
             val d = m.value.replace(",", "")
-            if (d in docDigits || document.replace(",", "").contains(d)) return@all true
+            if (d in docDigits || document.replace(",", "").contains(d) || photoNote.replace(",", "").contains(d)) return@all true
             val before = ans.substring(0, m.range.first).takeLast(12)
             val after = ans.substring(m.range.last + 1).take(3)
             val isCount = d.all { it.isDigit() } && d.length <= 2 && !before.trimEnd().endsWith("$") &&
@@ -233,7 +246,7 @@ object AskEngine {
         if (!quoted || !numbersOk) {
             return Answer("I couldn't find that in the document, so I won't guess. Try asking another way.", "", true)
         }
-        return Answer(ans.replace(Regex("(?m)^\\s*[*•-]\\s+"), "").trim(), quote, false)
+        return Answer(ans.replace(Regex("(?m)^\\s*[*•-]\\s+"), "").trim(), quote, false, photoNote)
     }
 
     // ------------------------------------------------------------ the prompt

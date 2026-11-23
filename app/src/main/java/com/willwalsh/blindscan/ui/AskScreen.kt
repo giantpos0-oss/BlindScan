@@ -68,6 +68,7 @@ object AskState {
 private class QA(val question: String) {
     var answer by mutableStateOf("")
     var quote by mutableStateOf("")
+    var photoNote by mutableStateOf("")
     var thinking by mutableStateOf(true)
 }
 
@@ -96,9 +97,9 @@ fun AskScreen(doc: ScannedDocument, reader: Reader, announcer: Announcer, onClos
     val focus = remember { FocusRequester() }
     val listState = rememberLazyListState()
 
-    LaunchedEffect(settings.askEngine, settings.cloudOn, settings.cloudKey, settings.cloudProvider) {
+    LaunchedEffect(settings.askEngine) {
         status = AskEngine.status(settings)
-        if (status == AskStatus.BuiltInReady || status is AskStatus.CloudReady) {
+        if (status == AskStatus.BuiltInReady || status == AskStatus.OnlineReady) {
             say("Ask a question about the document.")
             runCatching { focus.requestFocus() }
         }
@@ -121,22 +122,26 @@ fun AskScreen(doc: ScannedDocument, reader: Reader, announcer: Announcer, onClos
         say("Looking.")
         job = scope.launch {
             try {
-                val a = AskEngine.answer(settings, st, doc.text, AskState.turns.toList(), text)
+                val a = AskEngine.answer(context, st, doc.text, AskState.turns.toList(), text, doc.pages.mapNotNull { it.photo })
                 qa.answer = a.text
                 qa.quote = a.quote
+                qa.photoNote = a.photoNote
                 qa.thinking = false
-                // The answer, then the document's own words that back it up.
-                say(if (a.quote.isNotEmpty()) "${a.text} The document says: ${a.quote}" else a.text)
+                // The answer, then the document's own words that back it up, then any misread the
+                // photo shows.
+                val spoken = StringBuilder(a.text)
+                if (a.quote.isNotEmpty()) spoken.append(" The document says: ").append(a.quote)
+                if (a.photoNote.isNotEmpty()) spoken.append(" Please check: ").append(a.photoNote)
+                say(spoken.toString())
                 if (!a.notFound) AskState.turns.add(Turn(text, a.text))
             } catch (t: Throwable) {
                 if (t is kotlinx.coroutines.CancellationException) throw t
                 qa.thinking = false
                 qa.answer = "Sorry, I couldn't get an answer. " + when {
-                    t is AskEngine.CloudError && (t.code == 401 || t.code == 403) ->
-                        "The cloud AI didn't accept your key. Check it in Settings, Ask a question."
-                    t is AskEngine.CloudError && t.code == 429 -> "The cloud AI says too many questions or no credit left. Try again later."
-                    t is AskEngine.CloudError && t.code == 404 -> "The cloud AI model wasn't found; BlindScan may need an update."
-                    t is java.io.IOException -> "There's no internet connection for the cloud AI."
+                    t is AskEngine.ServiceError && t.code == 503 -> "The online AI isn't available right now. Try again later."
+                    t is AskEngine.ServiceError && (t.code == 403 || t.code == 400) -> "BlindScan may need an update. Check for a new version."
+                    t is AskEngine.ServiceError -> "The online AI had a problem. Please try again."
+                    t is java.io.IOException -> "There's no internet connection. Connect to Wi-Fi or mobile data and try again."
                     t.message?.contains("BUSY", true) == true -> "The AI is busy; try again in a moment."
                     t.message?.contains("BACKGROUND", true) == true -> "Keep BlindScan open while it answers."
                     else -> "Please try again."
@@ -182,17 +187,6 @@ fun AskScreen(doc: ScannedDocument, reader: Reader, announcer: Announcer, onClos
                     }
                 })
             }
-            st is AskStatus.NoneAvailable -> {
-                Text(
-                    if (settings.askEngine == com.willwalsh.blindscan.AskEngineChoice.CLOUD)
-                        "You chose the cloud AI, but it isn't set up yet. In Settings, Ask a question, turn on the " +
-                            "cloud AI, choose a service and enter your key."
-                    else "This phone doesn't have Google's built-in AI. You can use a cloud AI instead with your own " +
-                        "key: in Settings, Ask a question, turn on the cloud AI. The document's text is then sent to " +
-                        "the company you choose to answer your questions.",
-                    fontSize = 20.sp, modifier = Modifier.padding(16.dp),
-                )
-            }
             else -> {
                 if (stillReading) {
                     val done = doc.pages.count { !it.reading }
@@ -209,6 +203,8 @@ fun AskScreen(doc: ScannedDocument, reader: Reader, announcer: Announcer, onClos
                                 Text(qa.answer, fontSize = 20.sp)
                                 if (qa.quote.isNotEmpty()) Text("The document says: “${qa.quote}”", fontSize = 18.sp,
                                     modifier = Modifier.padding(top = 4.dp))
+                                if (qa.photoNote.isNotEmpty()) Text("Please check: ${qa.photoNote}", fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
                             }
                         }
                     }
@@ -227,7 +223,7 @@ fun AskScreen(doc: ScannedDocument, reader: Reader, announcer: Announcer, onClos
                     if (job?.isActive == true) SmallButton("Stop", onClick = { job?.cancel(); reader.stopSpeaking(); say("Stopped.") })
                 }
                 Text(
-                    (if (st is AskStatus.CloudReady) "Answers by ${st.provider.label}, in the cloud. "
+                    (if (st == AskStatus.OnlineReady) "Answers by BlindScan's online AI. "
                     else "Answers by the phone's built-in AI, on the phone. ") +
                         "Each answer is checked against the page; anything that can't be found there isn't given.",
                     fontSize = 16.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),

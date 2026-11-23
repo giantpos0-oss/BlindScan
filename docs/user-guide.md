@@ -2,7 +2,7 @@
 
 BlindScan turns print into speech. It was made by a blind person for blind people. It is free, and it always will be.
 
-Everything happens on your phone, and nothing you scan leaves it. The one exception is optional: if you turn on a cloud AI for Ask a question, the text of a document you ask about is sent to the company you chose. It's off until you set it up. Reading works the same in airplane mode.
+Reading happens entirely on your phone, and works the same in airplane mode. The one time anything leaves the phone is when you use Ask a question with BlindScan's online AI: then the document you ask about goes to it to be answered. See Ask a question, below.
 
 This guide covers the latest version of BlindScan. To see what changed in each version, open the release notes from the top of the Help tab.
 
@@ -186,6 +186,7 @@ Ask anything about the document you scanned, like: what's the total, when is it 
 - When you go back from Ask a question to the document, it isn't read aloud again from the start. Choose Read aloud if you want to hear it.
 - Type your question in the Your question box and press Ask, or press Say your question and speak it.
 - You'll hear "Looking." Then you hear the answer, followed by "The document says:" and the exact words from the page that back it up. Both are also shown on screen.
+- If the photo shows something different from what BlindScan read, like a different amount, you also hear "Please check:" and what the photo shows compared with the scan.
 - Ask follow-up questions, like "and when is it due?". It remembers your last couple of questions.
 - Press Stop to stop an answer. Navigate up, or any tab, closes Ask a question.
 
@@ -193,12 +194,13 @@ Ask anything about the document you scanned, like: what's the total, when is it 
 
 The AI must give the exact words from the document that support its answer. BlindScan checks that those words, and every number in the answer, really are in the scanned text. If they aren't, you hear "I couldn't find that in the document, so I won't guess", instead of something the AI may have made up. If the document doesn't hold the answer, you hear "The document doesn't say."
 
-The check can't fix a word the camera misread. If the scan says 84 but the paper says 64, the answer says 84 too. For anything important, like an amount due or a medicine dose, scan again or check another way.
+For a one-page document, BlindScan's online AI also looks at the photo of the page, to catch words the camera misread. If the scan says $84.17 but the photo shows $64.17, it answers from the photo and tells you: "Please check: The photo shows $64.17 where the scan says $84.17." For documents with several pages, only the text is checked, so a misread word can still get through. For anything important, like an amount due or a medicine dose, check another way too.
 
 ### Which AI answers
 
-- Phones with Google's built-in AI, Gemini Nano, answer on the phone. It's free and private: nothing leaves the phone. Recent Pixel phones, Samsung Galaxy S phones and others have it. The first time, Android may need to fetch it; press Get the built-in AI.
-- If your phone doesn't have it, or you want the most accurate answers, you can use a cloud AI with your own key: Anthropic Claude or Google Gemini. The document's text and your question are then sent to that company, and you pay them for what you use. Set it up in Settings, Ask a question.
+- BlindScan's online AI works on every phone with an internet connection. You don't need an account or a key, and it's free. It's the most accurate, and it's the one that checks the photo. The document's text, the photo for a one-page document, and your question are sent to it and to OpenAI to answer. BlindScan's service doesn't keep them.
+- Google's built-in AI, Gemini Nano, answers on the phone, so nothing leaves it. Recent Pixel phones, Samsung Galaxy S phones and others have it, but not rooted phones or phones with an unlocked bootloader. It doesn't check the photo.
+- To start with, BlindScan uses the built-in AI when it's ready, and the online AI otherwise. You can choose in Settings, Ask a question.
 
 ## How BlindScan reads a page
 
@@ -250,8 +252,8 @@ All of these are on to start with, except Scan automatically when ready.
 
 ### Ask a question
 
-- Answers come from: Automatic (the phone's built-in AI, or the cloud AI when the phone has none, if you set it up), Phone's built-in AI only, or Cloud AI only.
-- Use a cloud AI: off to start with. When you turn it on, choose Anthropic Claude or Google Gemini, paste your API key in the box, and press Save key. The key is kept only on this phone. Remove key deletes it.
+- Answers come from: Automatic (the phone's built-in AI when it's ready, otherwise BlindScan's online AI), BlindScan's online AI, or Phone's built-in AI only.
+- With Phone's built-in AI only, if Android hasn't fetched the built-in AI yet, Ask a question offers Get the built-in AI.
 
 ### Problems
 
@@ -286,7 +288,7 @@ BlindScan works on Android 8 and newer.
 
 ## Privacy
 
-BlindScan only uses the internet for the optional cloud AI in Ask a question, which is off until you set it up with your own key. When it's on and you ask a question, the text of that document and your question are sent to the company you chose; nothing else is sent, and pictures never are. Pictures are kept only in the app's private storage and are tidied away when you clear a scan. Text, photos and reports leave your phone only when you choose Share, Save, or Share scan for testing yourself.
+BlindScan only uses the internet for Ask a question with BlindScan's online AI. When you ask, the text of that document, the photo of a one-page document, and your question are sent to BlindScan's AI service and to OpenAI to answer. BlindScan's service doesn't keep them. Nothing else is sent. Choose Phone's built-in AI only in Settings, Ask a question, to keep everything on the phone (on phones that have it). Pictures are kept only in the app's private storage and are tidied away when you clear a scan. Text, photos and reports leave your phone only when you choose Share, Save, or Share scan for testing yourself.
 
 ## Licence
 
