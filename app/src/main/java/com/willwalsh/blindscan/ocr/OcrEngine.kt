@@ -217,6 +217,26 @@ class OcrEngine(
         return LineRead(text.trim(), raw.confidence)
     }
 
+    /** True when the page reads clearly better turned round (see [read]). */
+    private fun isUpsideDownPage(img: Bitmap, boxes: List<TextBox>, lines: Int): Boolean {
+        val sample = boxes.sortedByDescending { max(it.w, it.h) }.take(lines)
+        if (sample.isEmpty()) return false
+        val scores = sample.map { b ->
+            pool.submit(Callable {
+                try {
+                    val c = crop(img, b)
+                    val t = ImageTensors.rotate(c, 180)
+                    val pair = recognizeRaw(c).confidence to recognizeRaw(t).confidence
+                    c.recycle(); t.recycle()
+                    pair
+                } catch (_: Throwable) { 0f to 0f }
+            })
+        }.map { it.get() }
+        val asIs = scores.map { it.first }.average()
+        val turned = scores.map { it.second }.average()
+        return turned > asIs + 0.15
+    }
+
     /** True when the orientation classifier is confident a line is upside down. */
     fun isUpsideDown(crop: Bitmap): Boolean {
         val input = ImageTensors.recognition(crop, 192)
@@ -264,15 +284,10 @@ class OcrEngine(
                 img = ImageTensors.rotate(img, 90)
                 boxes = detect(img, limit)
             }
-            // Upside down: ask the classifier about the longest lines and take a majority vote.
-            val sample = boxes.sortedByDescending { max(it.w, it.h) }.take(9)
-            var votes = 0
-            for (b in sample) {
-                val crop = crop(img, b)
-                votes += if (isUpsideDown(crop)) 1 else -1
-                crop.recycle()
-            }
-            if (votes > 0) {
+            // Upside down: read the longest lines both ways round. Upside-down print reads as
+            // nonsense with low confidence, the right way up with high confidence: a far surer test
+            // than the orientation classifier, which missed pages of small print held upside down.
+            if (isUpsideDownPage(img, boxes, if (limit < 1200) 4 else 8)) {
                 val w = img.width.toFloat(); val h = img.height.toFloat()
                 val turned = ImageTensors.rotate(img, 180)
                 if (img !== source) img.recycle()

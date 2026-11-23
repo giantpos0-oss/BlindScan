@@ -2,6 +2,10 @@
 
 The newest version is at the top. Each version has its own heading, so you can jump between them with your screen reader's heading navigation.
 
+## Version 0.3.2
+
+- Fixed: pages held upside down were sometimes read as gibberish instead of being turned the right way round. BlindScan now reads a few lines both ways round and keeps whichever makes sense, which works far better on small print.
+
 ## Version 0.3.1
 
 - Ask a question is now in Document actions, and in TalkBack's Actions on every paragraph, as well as the button at the bottom right.
