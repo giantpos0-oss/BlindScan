@@ -2,6 +2,14 @@
 
 The newest version is at the top. Each version has its own heading, so you can jump between them with your screen reader's heading navigation.
 
+## Version 0.5.0
+
+- Ask a question now answers questions about what the document is about, not just what's written on it, like what a late fee is. Those answers start with "This isn't in the document, but:". Questions about something else entirely aren't answered.
+- Ask your next question at any time, even while an answer is coming. It's answered as soon as the one before is done.
+- After a spoken question, BlindScan listens for your next one by itself once the answer has been read. Turn this off in Settings, Ask a question.
+- New in Settings, Speech: choose the speech engine BlindScan uses, or keep the phone's own. Hear a sample to try it.
+- The online AI now always names itself to the internet service in front of it, so it can't be turned away as an unknown app. Checked from outside, the way a phone asks.
+
 ## Version 0.4.1
 
 - Better paragraph breaks on pages with lots of short, indented paragraphs, like letters and notices where each paragraph is one or two lines.

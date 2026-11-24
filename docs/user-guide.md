@@ -181,6 +181,8 @@ Share scan for testing sends the original photos with a report of what was recog
 
 Ask anything about the document you scanned, like: what's the total, when is it due, who is this letter from, which dishes are vegetarian.
 
+You can also ask about things the document is about, even if the answer isn't written on it, like what a late fee is or what a medicine on a label is for. Those answers start with "This isn't in the document, but:", so you always know which answers come from the page. Questions that have nothing to do with the document aren't answered: you hear "That question isn't about this document."
+
 - Press Ask a question at the bottom right of any screen, or choose Ask a question from Document actions, or from TalkBack's Actions on any paragraph. It asks about the document that's showing, or else the one you scanned most recently.
 - Documents with several pages work the same way: batch scans, added pages and imported PDFs. If pages are still being read, you'll hear "Still reading the pages. You can ask as soon as they're done."
 - When you go back from Ask a question to the document, it isn't read aloud again from the start. Choose Read aloud if you want to hear it.
@@ -188,7 +190,10 @@ Ask anything about the document you scanned, like: what's the total, when is it 
 - You'll hear "Looking." Then you hear the answer, followed by "The document says:" and the exact words from the page that back it up. Both are also shown on screen.
 - If the photo shows something different from what BlindScan read, like a different amount, you also hear "Please check:" and what the photo shows compared with the scan.
 - Ask follow-up questions, like "and when is it due?". It remembers your last couple of questions.
-- Press Stop to stop an answer. Navigate up, or any tab, closes Ask a question.
+- You can ask your next question at any time, even while an answer is still coming. You'll hear "Next question saved", and it's answered as soon as the one before it is done.
+- After a spoken question, BlindScan listens for your next question by itself, once the answer has had time to be read. Just speak, or cancel the listening to stop. You can turn this off in Settings, Ask a question.
+- After a typed question, the Your question box is ready for the next one.
+- Press Stop to stop the speech. Navigate up, or any tab, closes Ask a question.
 
 ### Every answer is checked
 
@@ -231,6 +236,7 @@ Settings are grouped. Choose a group to see its settings, then use Navigate up o
 
 ### Speech
 
+- Speech engine for Android text to speech: Same as the phone (whatever is set in Android's Text-to-speech settings), or any speech engine installed on the phone, just for BlindScan. Press Hear a sample to try it. This is the voice BlindScan uses when it reads with Android text to speech; your screen reader keeps its own voice.
 - Speech rate for Android text to speech: from half speed to three times normal speed, in steps of a tenth. This only affects Android text to speech, not your screen reader.
 
 ### Accuracy and speed
@@ -254,6 +260,7 @@ All of these are on to start with, except Scan automatically when ready.
 
 - Answers come from: Automatic (the phone's built-in AI when it's ready, otherwise BlindScan's online AI), BlindScan's online AI, or Phone's built-in AI only.
 - With Phone's built-in AI only, if Android hasn't fetched the built-in AI yet, Ask a question offers Get the built-in AI.
+- After a spoken question, listen for the next one. On to start with.
 
 ### Problems
 

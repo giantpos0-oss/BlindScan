@@ -97,6 +97,18 @@ class Settings(context: Context) {
         get() = _askEngine
         set(v) { _askEngine = v; prefs.edit { putString("askEngine", v.name) } }
 
+    private var _ttsEngine by mutableStateOf(prefs.getString("ttsEngine", "") ?: "")
+    /** The speech engine BlindScan speaks with: a package name, or blank for the phone's default. */
+    var ttsEngine: String
+        get() = _ttsEngine
+        set(v) { _ttsEngine = v; prefs.edit { putString("ttsEngine", v) } }
+
+    private val _askListenAgain = bool("askListenAgain", true)
+    /** After you say a question and hear the answer, start listening for the next question. */
+    var askListenAgain: Boolean
+        get() = _askListenAgain.value
+        set(v) { _askListenAgain.value = v; save("askListenAgain", v) }
+
     /** Set by the app so engines can be rebuilt when an engine setting changes. */
     var onEngineSettingChanged: (() -> Unit)? = null
 }

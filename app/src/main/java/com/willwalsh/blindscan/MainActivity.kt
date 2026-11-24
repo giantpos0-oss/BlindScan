@@ -63,7 +63,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val app = application as BlindScanApp
-        reader = Reader(this).also { it.rate = app.settings.speechRate }
+        reader = Reader(this).also { it.rate = app.settings.speechRate; it.useEngine(app.settings.ttsEngine) }
         val announcer = Announcer(this, reader)
         takeSharedFiles(intent)
         setContent {

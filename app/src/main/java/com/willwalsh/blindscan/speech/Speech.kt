@@ -44,7 +44,30 @@ class Reader(context: Context) {
     var rate: Float = 1f
         set(v) { field = v; tts.setSpeechRate(v) }
 
-    private val tts: TextToSpeech = TextToSpeech(context.applicationContext) { status -> onEngineReady(status) }
+    private val appContext = context.applicationContext
+    /** The speech engine in use: a package name, or null for the phone's default (Settings, Text-to-speech). */
+    private var enginePackage: String? = null
+    private var tts: TextToSpeech = TextToSpeech(appContext) { status -> onEngineReady(status) }
+
+    /** The speech engines installed on the phone: package name and the name people know it by. */
+    fun engines(): List<Pair<String, String>> =
+        runCatching { tts.engines.map { it.name to it.label } }.getOrDefault(emptyList())
+
+    /**
+     * Speaks with [pkg] (a speech engine's package name) from now on, or with the phone's
+     * default engine when it's null or blank.
+     */
+    fun useEngine(pkg: String?) {
+        val want = pkg?.takeIf { it.isNotBlank() }
+        if (want == enginePackage) return
+        enginePackage = want
+        val old = tts
+        ready = false
+        tts = if (want == null) TextToSpeech(appContext) { status -> onEngineReady(status) }
+        else TextToSpeech(appContext, { status -> onEngineReady(status) }, want)
+        tts.setOnUtteranceProgressListener(progress)
+        runCatching { old.stop(); old.shutdown() }
+    }
 
     private fun onEngineReady(status: Int) {
         ready = status == TextToSpeech.SUCCESS
@@ -60,8 +83,7 @@ class Reader(context: Context) {
         }
     }
 
-    init {
-        tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+    private val progress = object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {}
             override fun onDone(utteranceId: String?) {
                 val id = utteranceId ?: return
@@ -80,7 +102,10 @@ class Reader(context: Context) {
             }
             @Deprecated("Deprecated in Java")
             override fun onError(utteranceId: String?) {}
-        })
+        }
+
+    init {
+        tts.setOnUtteranceProgressListener(progress)
     }
 
     /** Loads new text, split into sentences. */

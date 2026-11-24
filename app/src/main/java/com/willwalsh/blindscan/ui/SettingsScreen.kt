@@ -77,6 +77,33 @@ fun SettingsScreen(onUp: () -> Unit) {
                 Toggle("Best accuracy in live mode (slower)", s.liveBestAccuracy) { s.liveBestAccuracy = it }
             }
             SettingsPage.SPEECH -> {
+                // Speech engine: the phone's default, or one chosen just for BlindScan.
+                val reader = LocalReader.current
+                val engines = androidx.compose.runtime.remember { reader.engines() }
+                Section("Speech engine for Android text to speech")
+                Column(Modifier.selectableGroup()) {
+                    val choices = listOf("" to "Same as the phone (set in Android's Text-to-speech settings)") + engines
+                    for ((pkg, label) in choices) {
+                        Row(
+                            Modifier.fillMaxWidth().heightIn(min = 56.dp)
+                                .selectable(selected = s.ttsEngine == pkg, role = Role.RadioButton, onClick = {
+                                    s.ttsEngine = pkg
+                                    reader.useEngine(pkg)
+                                })
+                                .padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = s.ttsEngine == pkg, onClick = null)
+                            Text(label, fontSize = 19.sp, modifier = Modifier.padding(start = 12.dp))
+                        }
+                    }
+                }
+                BigButton("Hear a sample", onClick = { reader.sayNow("This is how BlindScan sounds with this speech engine.") })
+                Text(
+                    "This is the voice BlindScan uses when it reads with Android text to speech. When it reads with " +
+                        "your screen reader, your screen reader's own voice is used.",
+                    fontSize = 18.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
                 val rateText = String.format(Locale.getDefault(), "%.1f times normal speed", s.speechRate)
                 Text("Speech rate for Android text to speech: $rateText", fontSize = 19.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                 Slider(
@@ -118,6 +145,7 @@ fun SettingsScreen(onUp: () -> Unit) {
                         }
                     }
                 }
+                Toggle("After a spoken question, listen for the next one", s.askListenAgain) { s.askListenAgain = it }
                 Text(
                     "BlindScan's online AI needs no account or key. When it answers, the document's text, and the photo " +
                         "for a one-page document, are sent to it and to OpenAI to answer your question. BlindScan's service doesn't keep them. " +

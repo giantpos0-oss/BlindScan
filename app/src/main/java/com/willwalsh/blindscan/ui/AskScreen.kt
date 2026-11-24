@@ -47,7 +47,6 @@ import com.willwalsh.blindscan.ai.AskStatus
 import com.willwalsh.blindscan.ai.Turn
 import com.willwalsh.blindscan.speech.Announcer
 import com.willwalsh.blindscan.speech.Reader
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /** Whether the Ask a question screen is showing, and whether a scan should open it when done. */
@@ -93,7 +92,6 @@ fun AskScreen(doc: ScannedDocument, reader: Reader, announcer: Announcer, onClos
 
     var status by remember { mutableStateOf<AskStatus?>(null) }
     var question by remember { mutableStateOf("") }
-    var job by remember { mutableStateOf<Job?>(null) }
     val focus = remember { FocusRequester() }
     val listState = rememberLazyListState()
 
@@ -111,49 +109,70 @@ fun AskScreen(doc: ScannedDocument, reader: Reader, announcer: Announcer, onClos
         if (stillReading) say("Still reading the pages. You can ask as soon as they're done.")
     }
 
-    fun ask(q: String) {
-        val text = q.trim()
-        if (text.isEmpty() || job?.isActive == true || stillReading) return
+    // Questions wait their turn: ask the next one at any time, even while an answer is coming,
+    // and they're answered one after another, each knowing the answers before it.
+    val queue = remember { kotlinx.coroutines.channels.Channel<Pair<QA, Boolean>>(kotlinx.coroutines.channels.Channel.UNLIMITED) }
+    var pending by remember { mutableStateOf(0) }
+    var listenNext by remember { mutableStateOf(false) }
+
+    suspend fun answerOne(qa: QA, spokenQuestion: Boolean) {
         val st = status ?: return
+        try {
+            val a = AskEngine.answer(context, st, doc.text, AskState.turns.toList(), qa.question, doc.pages.mapNotNull { it.photo })
+            qa.answer = a.text
+            qa.quote = a.quote
+            qa.photoNote = a.photoNote
+            qa.thinking = false
+            // The answer, then the document's own words that back it up, then any misread the
+            // photo shows.
+            val spoken = StringBuilder(a.text)
+            if (a.quote.isNotEmpty()) spoken.append(if (a.related) " It's about where the document says: " else " The document says: ").append(a.quote)
+            if (a.photoNote.isNotEmpty()) spoken.append(" Please check: ").append(a.photoNote)
+            say(spoken.toString())
+            if (!a.notFound) AskState.turns.add(Turn(qa.question, a.text))
+            // Spoken question: once the answer has had time to be heard, listen for the next one.
+            if (spokenQuestion && settings.askListenAgain && pending <= 1) {
+                val words = spoken.split(Regex("\\s+")).size
+                kotlinx.coroutines.delay((words / (2.6f * settings.speechRate.coerceAtLeast(0.5f)) * 1000).toLong() + 900)
+                listenNext = true
+            } else if (pending <= 1) runCatching { focus.requestFocus() }
+        } catch (t: Throwable) {
+            if (t is kotlinx.coroutines.CancellationException) throw t
+            qa.thinking = false
+            qa.answer = "Sorry, I couldn't get an answer. " + when {
+                t is AskEngine.ServiceError && t.code == 503 -> "The online AI isn't available right now. Try again later."
+                t is AskEngine.ServiceError && (t.code == 403 || t.code == 400) -> "BlindScan may need an update. Check for a new version."
+                t is AskEngine.ServiceError -> "The online AI had a problem. Please try again."
+                t is java.io.IOException -> "There's no internet connection. Connect to Wi-Fi or mobile data and try again."
+                t.message?.contains("BUSY", true) == true -> "The AI is busy; try again in a moment."
+                t.message?.contains("BACKGROUND", true) == true -> "Keep BlindScan open while it answers."
+                else -> "Please try again."
+            }
+            say(qa.answer)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        for ((qa, spoken) in queue) {
+            answerOne(qa, spoken)
+            pending = (pending - 1).coerceAtLeast(0)
+        }
+    }
+
+    fun ask(q: String, spoken: Boolean = false) {
+        val text = q.trim()
+        if (text.isEmpty() || stillReading || status == null) return
         question = ""
         val qa = QA(text)
         shown.add(qa)
-        reader.stopSpeaking()
-        say("Looking.")
-        job = scope.launch {
-            try {
-                val a = AskEngine.answer(context, st, doc.text, AskState.turns.toList(), text, doc.pages.mapNotNull { it.photo })
-                qa.answer = a.text
-                qa.quote = a.quote
-                qa.photoNote = a.photoNote
-                qa.thinking = false
-                // The answer, then the document's own words that back it up, then any misread the
-                // photo shows.
-                val spoken = StringBuilder(a.text)
-                if (a.quote.isNotEmpty()) spoken.append(" The document says: ").append(a.quote)
-                if (a.photoNote.isNotEmpty()) spoken.append(" Please check: ").append(a.photoNote)
-                say(spoken.toString())
-                if (!a.notFound) AskState.turns.add(Turn(text, a.text))
-            } catch (t: Throwable) {
-                if (t is kotlinx.coroutines.CancellationException) throw t
-                qa.thinking = false
-                qa.answer = "Sorry, I couldn't get an answer. " + when {
-                    t is AskEngine.ServiceError && t.code == 503 -> "The online AI isn't available right now. Try again later."
-                    t is AskEngine.ServiceError && (t.code == 403 || t.code == 400) -> "BlindScan may need an update. Check for a new version."
-                    t is AskEngine.ServiceError -> "The online AI had a problem. Please try again."
-                    t is java.io.IOException -> "There's no internet connection. Connect to Wi-Fi or mobile data and try again."
-                    t.message?.contains("BUSY", true) == true -> "The AI is busy; try again in a moment."
-                    t.message?.contains("BACKGROUND", true) == true -> "Keep BlindScan open while it answers."
-                    else -> "Please try again."
-                }
-                say(qa.answer)
-            }
-        }
+        pending++
+        if (pending == 1) { reader.stopSpeaking(); say("Looking.") } else say("Next question saved.")
+        queue.trySend(qa to spoken)
     }
 
     val speech = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         val heard = r.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
-        if (r.resultCode == Activity.RESULT_OK && !heard.isNullOrBlank()) ask(heard)
+        if (r.resultCode == Activity.RESULT_OK && !heard.isNullOrBlank()) ask(heard, spoken = true)
     }
     fun speak() {
         val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
@@ -162,6 +181,8 @@ fun AskScreen(doc: ScannedDocument, reader: Reader, announcer: Announcer, onClos
             .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
         try { speech.launch(i) } catch (_: Throwable) { say("Speech input isn't available on this phone. Type your question instead.") }
     }
+
+    LaunchedEffect(listenNext) { if (listenNext) { listenNext = false; speak() } }
 
     LaunchedEffect(shown.size) { if (shown.isNotEmpty()) listState.animateScrollToItem(shown.size - 1) }
 
@@ -218,9 +239,9 @@ fun AskScreen(doc: ScannedDocument, reader: Reader, announcer: Announcer, onClos
                     keyboardActions = KeyboardActions(onSend = { ask(question) }),
                 )
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
-                    SmallButton("Ask", enabled = question.isNotBlank() && job?.isActive != true && !stillReading, onClick = { ask(question) })
-                    SmallButton("Say your question", enabled = job?.isActive != true && !stillReading, onClick = { speak() })
-                    if (job?.isActive == true) SmallButton("Stop", onClick = { job?.cancel(); reader.stopSpeaking(); say("Stopped.") })
+                    SmallButton("Ask", enabled = question.isNotBlank() && !stillReading, onClick = { ask(question) })
+                    SmallButton("Say your question", enabled = !stillReading, onClick = { speak() })
+                    if (pending > 0) SmallButton("Stop", onClick = { reader.stopSpeaking(); say("Stopped.") })
                 }
                 Text(
                     (if (st == AskStatus.OnlineReady) "Answers by BlindScan's online AI. "

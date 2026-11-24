@@ -41,6 +41,8 @@ data class Answer(
     val notFound: Boolean,
     /** When the photo shows something different from the scanned text (a misread), what it says. */
     val photoNote: String = "",
+    /** General information about the document's subject, not taken from the document itself. */
+    val related: Boolean = false,
 )
 
 /**
@@ -53,13 +55,22 @@ data class Answer(
  */
 object AskEngine {
     private val SYSTEM = """
-        You answer questions about a document that a blind person scanned with their phone's camera.
-        Use only the document. Never use outside knowledge and never guess.
-        Reply in exactly this form:
+        You help a blind person with a document they scanned with their phone's camera.
+        Answer any question that has to do with this document or what it is about. Questions about
+        something that has nothing to do with the document are not answered.
+        Reply in exactly this form, with these labels on their own lines:
+        SOURCE: DOCUMENT if the answer comes from the document. RELATED if the question is about the
+        document or its subject but the document doesn't hold the answer (what a word on it means, what a
+        medicine on it is for). UNRELATED if it has nothing to do with the document.
         ANSWER: a short, direct answer in one to three plain sentences, for listening (no markdown).
-        QUOTE: the exact words copied from the document that show the answer, word for word, at most
-        about forty words. For several separate places, join them with " ... ".
-        If the document does not contain the answer, reply exactly:
+        For DOCUMENT use only the document and never guess. For RELATED give brief, general,
+        well-established information and never invent details about this document, person or account.
+        For UNRELATED write: That question is not about this document.
+        QUOTE: for DOCUMENT, the exact words copied from the document that show the answer, word for
+        word, at most about forty words; several places joined with " ... ". NONE if the document
+        doesn't contain the answer. For RELATED, the words of the document the question is about, or NONE.
+        If a question asks for something from the document that it doesn't contain, reply:
+        SOURCE: DOCUMENT
         ANSWER: The document doesn't say.
         QUOTE: NONE
         Copy names, dates, amounts, prices and numbers exactly as the document writes them.
@@ -121,9 +132,11 @@ object AskEngine {
             c.connectTimeout = 15000; c.readTimeout = 90000
             c.doOutput = true
             c.setRequestProperty("content-type", "application/json")
+            // The request names itself: Cloudflare can turn away a request with Android's default
+            // name before BlindScan's service sees it (it did that to Voice Companion, error 1010).
+            c.setRequestProperty("User-Agent", "BlindScan/" + appVersion(context) + " (Android)")
             c.setRequestProperty("X-BlindScan-Install", installId(context))
-            c.setRequestProperty("X-BlindScan-Version",
-                runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "")
+            c.setRequestProperty("X-BlindScan-Version", appVersion(context))
             c.outputStream.use { it.write(body.toString().toByteArray()) }
             val code = c.responseCode
             val text = (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() } ?: ""
@@ -149,6 +162,9 @@ object AskEngine {
             "data:image/jpeg;base64," + android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
         }
     } catch (_: Throwable) { null }
+
+    private fun appVersion(context: android.content.Context): String =
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "0"
 
     /** A random id for this installed copy (not tied to you or the phone). */
     private fun installId(context: android.content.Context): String {
@@ -215,11 +231,25 @@ object AskEngine {
 
     fun check(raw: String, document: String): Answer {
         val cleaned = raw.replace(Regex("\\*\\*|__|`"), "")
+        val source = Regex("(?i)SOURCE:\\s*([A-Z]+)").find(cleaned)?.groupValues?.get(1)?.uppercase() ?: "DOCUMENT"
         val ans = Regex("(?is)ANSWER:\\s*(.*?)(?:\\n\\s*QUOTE:|$)").find(cleaned)?.groupValues?.get(1)?.trim()
             ?: cleaned.substringBefore("QUOTE:").trim()
         val quote = Regex("(?is)QUOTE:\\s*(.*?)(?:\\n\\s*CHECK:|$)").find(cleaned)?.groupValues?.get(1)?.trim()?.trim('"', '“', '”') ?: ""
         val photoCheck = Regex("(?is)CHECK:\\s*(.*)$").find(cleaned)?.groupValues?.get(1)?.trim() ?: ""
         val photoNote = if (photoCheck.isBlank() || photoCheck.trimEnd('.').equals("OK", true)) "" else photoCheck
+        // A question that has nothing to do with the document isn't answered.
+        if (source == "UNRELATED") return Answer("That question isn't about this document. Ask something about what you scanned.", "", true)
+        // About the document's subject, but not in it: general information, said plainly as such.
+        // Its quote, if any, must still be on the page; it isn't checked for numbers, since it
+        // isn't claiming to come from the document.
+        if (source == "RELATED") {
+            val docW = norm(document)
+            val pieces = quote.split(Regex("\\s*(\\.\\.\\.|…)\\s*")).map { norm(it) }.filter { it.isNotEmpty() }
+            val q = if (quote.equals("NONE", true) || pieces.isEmpty() || !pieces.all { foundIn(docW, it) }) "" else quote
+            val text = ans.replace(Regex("(?m)^\\s*[*•-]\\s+"), "").trim()
+            if (text.isBlank()) return Answer("I couldn't answer that. Try asking another way.", "", true)
+            return Answer("This isn't in the document, but: $text", q, false, photoNote, related = true)
+        }
         val doesntSay = ans.contains("doesn't say", true) || ans.contains("does not say", true) ||
             quote.equals("NONE", true) || quote.isBlank()
         if (doesntSay) return Answer("The document doesn't say.", "", true)
